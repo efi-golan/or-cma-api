@@ -1,7 +1,3 @@
-bash
-
-cat /home/claude/cma-backend/server.js
-Output
 
 require('dotenv').config();
 const express = require('express');
