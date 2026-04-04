@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: or-nesachim-cma-api
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: PORT
+        value: 3001
+      - key: FRONTEND_URL
+        sync: false
+      - key: CLAUDE_API_KEY
+        sync: false
+    healthCheckPath: /health
