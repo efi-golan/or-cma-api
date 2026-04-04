@@ -1,3 +1,8 @@
+bash
+
+cat /home/claude/cma-backend/server.js
+Output
+
 require('dotenv').config();
 const express = require('express');
 const fetch = require('node-fetch');
@@ -6,22 +11,15 @@ const rateLimit = require('express-rate-limit');
 const NodeCache = require('node-cache');
 
 const app = express();
-const cache = new NodeCache({ stdTTL: 3600 }); // 1hr cache
+const cache = new NodeCache({ stdTTL: 3600 });
 const PORT = process.env.PORT || 3001;
 
-// ── MIDDLEWARE ──────────────────────────────────────────────
 app.use(express.json());
-app.use(cors({
-  origin: process.env.FRONTEND_URL || '*',
-  methods: ['GET', 'POST']
-}));
+app.use(cors({ origin: '*', methods: ['GET', 'POST'] }));
+app.use('/api/', rateLimit({ windowMs: 60000, max: 30 }));
 
-const limiter = rateLimit({ windowMs: 60 * 1000, max: 30, message: { error: 'Too many requests' } });
-app.use('/api/', limiter);
-
-// ── NADLAN HEADERS (mimic browser) ──────────────────────────
 const NADLAN_HEADERS = {
-  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0',
+  'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36',
   'Accept': 'application/json, text/plain, */*',
   'Accept-Language': 'he-IL,he;q=0.9,en;q=0.8',
   'Referer': 'https://www.nadlan.gov.il/',
@@ -30,253 +28,139 @@ const NADLAN_HEADERS = {
 
 const NADLAN_BASE = 'https://www.nadlan.gov.il/Nadlan.REST/Main';
 
-// ── HELPER: fetch with retry ─────────────────────────────────
+async function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
 async function nadlanFetch(url, retries = 3) {
   for (let i = 0; i < retries; i++) {
     try {
-      const res = await fetch(url, { headers: NADLAN_HEADERS, timeout: 10000 });
-      if (res.ok) return res.json();
-      if (res.status === 429) {
-        await new Promise(r => setTimeout(r, 2000 * (i + 1)));
-        continue;
+      console.log(`[nadlan] ${url.slice(0, 120)}`);
+      const res = await fetch(url, { headers: NADLAN_HEADERS, timeout: 15000 });
+      console.log(`[nadlan] status=${res.status}`);
+      if (res.ok) {
+        const text = await res.text();
+        console.log(`[nadlan] len=${text.length} preview=${text.slice(0,80)}`);
+        try { return JSON.parse(text); } catch(e) { return []; }
       }
+      if (res.status === 429) { await sleep(3000*(i+1)); continue; }
       throw new Error(`HTTP ${res.status}`);
-    } catch (e) {
-      if (i === retries - 1) throw e;
-      await new Promise(r => setTimeout(r, 1000 * (i + 1)));
+    } catch(e) {
+      console.error(`[nadlan] err attempt ${i+1}:`, e.message);
+      if (i === retries-1) throw e;
+      await sleep(1500*(i+1));
     }
   }
 }
 
-// ── HEALTH CHECK ─────────────────────────────────────────────
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok', version: '1.0.0', source: 'nadlan.gov.il' });
-});
+function normalizeTx(raw, scope) {
+  if (!raw || !Array.isArray(raw)) return [];
+  return raw
+    .filter(t => t && (t.DEALAMOUNT > 0 || t.dealAmount > 0))
+    .map(t => ({
+      address: t.DISPLAYSTREET || t.displayStreet || t.STREETNAME || '',
+      houseNumber: String(t.HOUSENUMBER || t.houseNumber || ''),
+      floor: t.FLOOR ?? t.floor ?? null,
+      rooms: t.ROOMS ?? t.rooms ?? null,
+      area: t.DEALAREA || t.dealArea || null,
+      price: t.DEALAMOUNT || t.dealAmount || 0,
+      pricePerSqm: (t.DEALAREA||t.dealArea) ? Math.round((t.DEALAMOUNT||t.dealAmount)/(t.DEALAREA||t.dealArea)) : null,
+      date: t.DEALDATETXT || t.dealDateTxt || '',
+      neighborhood: t.NEIGHBORHOODNAME || t.neighborhoodName || '',
+      city: t.CITYNAME || t.cityName || '',
+      assetType: t.ASSETTYPENAME || '',
+      source: 'nadlan.gov.il',
+      scope
+    }))
+    .slice(0, 8);
+}
 
-// ── GET NEIGHBORHOODS ────────────────────────────────────────
-// GET /api/neighborhoods?city=רחובות
-app.get('/api/neighborhoods', async (req, res) => {
-  const { city } = req.query;
-  if (!city) return res.status(400).json({ error: 'city required' });
+app.get('/health', (req, res) => res.json({ status: 'ok', version: '2.1.0', source: 'nadlan.gov.il' }));
 
-  const cacheKey = `nb_${city}`;
-  const cached = cache.get(cacheKey);
-  if (cached) return res.json(cached);
-
+app.get('/api/test', async (req, res) => {
   try {
-    const url = `${NADLAN_BASE}/GetNeighborhoodsListByCityAndStartsWith?cityName=${encodeURIComponent(city)}&startWithKey=-1`;
+    const url = `${NADLAN_BASE}/GetNeighborhoodsListByCityAndStartsWith?cityName=%D7%A8%D7%97%D7%95%D7%91%D7%95%D7%AA&startWithKey=-1`;
     const data = await nadlanFetch(url);
-    cache.set(cacheKey, data);
-    res.json(data);
-  } catch (e) {
-    res.status(502).json({ error: e.message });
-  }
+    res.json({ success: true, type: typeof data, isArray: Array.isArray(data), count: Array.isArray(data) ? data.length : 'N/A', sample: Array.isArray(data) ? data.slice(0,2) : data });
+  } catch(e) { res.status(502).json({ error: e.message }); }
 });
 
-// ── GET STREETS ──────────────────────────────────────────────
-// GET /api/streets?city=רחובות&neighborhood=מרכז
-app.get('/api/streets', async (req, res) => {
-  const { city, neighborhood } = req.query;
-  if (!city) return res.status(400).json({ error: 'city required' });
-
-  const cacheKey = `st_${city}_${neighborhood}`;
-  const cached = cache.get(cacheKey);
-  if (cached) return res.json(cached);
-
-  try {
-    const url = `${NADLAN_BASE}/GetStreetListByCityAndNeighborhoodAndStartsWith?cityName=${encodeURIComponent(city)}&neighborhoodName=${encodeURIComponent(neighborhood || '')}&startWithKey=-1`;
-    const data = await nadlanFetch(url);
-    cache.set(cacheKey, data);
-    res.json(data);
-  } catch (e) {
-    res.status(502).json({ error: e.message });
-  }
-});
-
-// ── SEARCH TRANSACTIONS ──────────────────────────────────────
-// POST /api/transactions
-// Body: { city, street, neighborhood, houseNumber, rooms, dateFrom, dateTo }
 app.post('/api/transactions', async (req, res) => {
-  const { city, street, neighborhood, houseNumber, rooms, dateFrom, dateTo } = req.body;
+  const { city, street, neighborhood, houseNumber } = req.body;
   if (!city || !street) return res.status(400).json({ error: 'city and street required' });
 
-  // Date defaults: last 24 months
-  const now = new Date();
-  const from = dateFrom || new Date(now.getFullYear() - 2, now.getMonth(), 1).toLocaleDateString('en-GB').split('/').reverse().join('-');
-  const to = dateTo || now.toLocaleDateString('en-GB').split('/').reverse().join('-');
-
-  const cacheKey = `tx_${city}_${street}_${houseNumber || ''}_${rooms || ''}_${from}_${to}`;
+  const cacheKey = `tx2_${city}_${street}_${houseNumber||''}_${neighborhood||''}`;
   const cached = cache.get(cacheKey);
-  if (cached) return res.json(cached);
+  if (cached) { console.log('[cache] hit'); return res.json(cached); }
+
+  const now = new Date();
+  const from = new Date(now.getFullYear()-2, now.getMonth(), 1);
+  const fromStr = `${from.getFullYear()}-${String(from.getMonth()+1).padStart(2,'0')}-01`;
+  const toStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+
+  const cityE = encodeURIComponent(city);
+  const streetE = encodeURIComponent(street);
+  const nbE = encodeURIComponent(neighborhood||'');
+  const hnE = encodeURIComponent(houseNumber||'');
+
+  console.log(`[tx] city=${city} street=${street} hn=${houseNumber} nb=${neighborhood}`);
 
   try {
-    // 1. Building-level search (with house number)
-    const buildingUrl = `${NADLAN_BASE}/GetDealsByStreet?cityName=${encodeURIComponent(city)}&neighborhoodName=${encodeURIComponent(neighborhood || '')}&streetName=${encodeURIComponent(street)}&houseNum=${encodeURIComponent(houseNumber || '')}&fromDate=${from}&toDate=${to}&pageNum=1&pageSize=50`;
+    const urls = [
+      houseNumber ? `${NADLAN_BASE}/GetDealsByStreet?cityName=${cityE}&neighborhoodName=${nbE}&streetName=${streetE}&houseNum=${hnE}&fromDate=${fromStr}&toDate=${toStr}&pageNum=1&pageSize=50` : null,
+      `${NADLAN_BASE}/GetDealsByStreet?cityName=${cityE}&neighborhoodName=${nbE}&streetName=${streetE}&houseNum=&fromDate=${fromStr}&toDate=${toStr}&pageNum=1&pageSize=50`,
+      neighborhood ? `${NADLAN_BASE}/GetDealsByNeighborhood?cityName=${cityE}&neighborhoodName=${nbE}&fromDate=${fromStr}&toDate=${toStr}&pageNum=1&pageSize=50` : null
+    ].filter(Boolean);
 
-    // 2. Street-level search
-    const streetUrl = `${NADLAN_BASE}/GetDealsByStreet?cityName=${encodeURIComponent(city)}&neighborhoodName=${encodeURIComponent(neighborhood || '')}&streetName=${encodeURIComponent(street)}&houseNum=&fromDate=${from}&toDate=${to}&pageNum=1&pageSize=50`;
+    const results = await Promise.allSettled(urls.map(u => nadlanFetch(u)));
+    console.log('[tx] results:', results.map(r => `${r.status}:${r.status==='fulfilled'?JSON.stringify(r.value).slice(0,40):'err'}`));
 
-    // 3. Neighborhood-level search
-    const nbUrl = `${NADLAN_BASE}/GetDealsByNeighborhood?cityName=${encodeURIComponent(city)}&neighborhoodName=${encodeURIComponent(neighborhood || '')}&fromDate=${from}&toDate=${to}&pageNum=1&pageSize=50`;
+    let bData=[], sData=[], nData=[];
+    const r0 = results[0]?.status==='fulfilled' ? normalizeTx(results[0].value?.Data||results[0].value,'building') : [];
+    const r1 = results[houseNumber?1:0]?.status==='fulfilled' ? normalizeTx(results[houseNumber?1:0].value?.Data||results[houseNumber?1:0].value,'street') : [];
+    const r2 = results[houseNumber?2:1]?.status==='fulfilled' ? normalizeTx(results[houseNumber?2:1].value?.Data||results[houseNumber?2:1].value,'neighborhood') : [];
 
-    const [buildingRaw, streetRaw, nbRaw] = await Promise.allSettled([
-      nadlanFetch(buildingUrl),
-      nadlanFetch(streetUrl),
-      neighborhood ? nadlanFetch(nbUrl) : Promise.resolve([])
-    ]);
+    if (houseNumber) {
+      bData = r0.filter(t => t.houseNumber===String(houseNumber)).slice(0,4);
+      sData = r0.filter(t => t.houseNumber!==String(houseNumber)).concat(r1).slice(0,8);
+    } else {
+      sData = r1.slice(0,8);
+    }
+    nData = r2.slice(0,8);
 
-    const normalize = (raw, scope) => {
-      const items = raw.status === 'fulfilled' ? (raw.value?.Data || raw.value || []) : [];
-      return items
-        .filter(t => t && t.DEALAMOUNT > 0)
-        .map(t => ({
-          address: [t.DISPLAYSTREET, t.HOUSENUMBER].filter(Boolean).join(' '),
-          houseNumber: t.HOUSENUMBER || '',
-          floor: t.FLOOR ?? null,
-          rooms: t.ROOMS ?? null,
-          area: t.DEALAREA ?? null,
-          price: t.DEALAMOUNT,
-          pricePerSqm: t.DEALAREA ? Math.round(t.DEALAMOUNT / t.DEALAREA) : null,
-          date: t.DEALDATETXT || t.DEALDATE || '',
-          neighborhood: t.NEIGHBORHOODNAME || neighborhood || '',
-          city: t.CITYNAME || city,
-          assetType: t.ASSETTYPENAME || '',
-          source: 'nadlan.gov.il',
-          scope
-        }))
-        .slice(0, 8); // max 8 per category per spec
-    };
+    console.log(`[tx] building=${bData.length} street=${sData.length} nb=${nData.length}`);
 
-    // Building: only those with matching house number
-    const bData = normalize(buildingRaw, 'building').filter(t =>
-      !houseNumber || t.houseNumber === String(houseNumber)
-    ).slice(0, 4);
-
-    // Street: exclude building
-    const sData = normalize(streetRaw, 'street').filter(t =>
-      !houseNumber || t.houseNumber !== String(houseNumber)
-    ).slice(0, 8);
-
-    // Neighborhood
-    const nData = normalize(nbRaw, 'neighborhood').slice(0, 8);
-
-    const result = {
-      building: bData,
-      street: sData,
-      neighborhood: nData,
-      meta: {
-        city, street, neighborhood, houseNumber,
-        dateFrom: from, dateTo: to,
-        source: 'nadlan.gov.il',
-        fetchedAt: new Date().toISOString()
-      }
-    };
-
-    cache.set(cacheKey, result);
+    const result = { building:bData, street:sData, neighborhood:nData, meta:{ city, street, neighborhood, houseNumber, dateFrom:fromStr, dateTo:toStr, source:'nadlan.gov.il', fetchedAt:new Date().toISOString() }};
+    if (bData.length+sData.length+nData.length > 0) cache.set(cacheKey, result);
     res.json(result);
-  } catch (e) {
-    console.error('Transaction fetch error:', e.message);
+  } catch(e) {
+    console.error('[tx] Error:', e);
     res.status(502).json({ error: e.message });
   }
 });
 
-// ── CLAUDE ANALYSIS ──────────────────────────────────────────
-// POST /api/analyze
-// Body: { property, transactions, claudeKey }
 app.post('/api/analyze', async (req, res) => {
   const { property, transactions, claudeKey } = req.body;
   const key = claudeKey || process.env.CLAUDE_API_KEY;
-  if (!key) return res.status(400).json({ error: 'Claude API key required' });
-
-  const allTx = [...(transactions.building || []), ...(transactions.street || [])].filter(t => t.price > 0);
-  if (allTx.length === 0) {
-    return res.json({ analysis: 'לא נמצאו עסקאות מספיקות לניתוח.', prices: { fast: 0, real: 0, ceil: 0 } });
-  }
-
-  // Calculate prices server-side first (conservative)
-  const prices = allTx.map(t => t.price).sort((a, b) => a - b);
-  const median = prices[Math.floor(prices.length / 2)];
-  const calculatedPrices = {
-    fast: Math.round(median * 0.92 / 10000) * 10000,
-    real: Math.round(median * 0.97 / 10000) * 10000,
-    ceil: Math.round(median * 1.05 / 10000) * 10000
-  };
-
-  const txSummary = allTx.slice(0, 6).map(t =>
-    `${t.address}, ${t.rooms || '?'} חד', ${t.area || '?'}מ"ר, קומה ${t.floor ?? '?'}: ₪${t.price.toLocaleString()} (${t.date}) – ${t.source}`
-  ).join('\n');
-
-  const prompt = `אתה שמאי מקרקעין מוסמך ישראלי. נתח את הנכס הבא וכתוב דוח CMA קצר ומקצועי.
-
-פרטי הנכס:
-- כתובת: ${property.street} ${property.houseNumber || ''}, ${property.neighborhood ? 'שכונת ' + property.neighborhood + ',' : ''} ${property.city}
-- סוג: ${property.type || 'דירה'} | קומה: ${property.floor || '?'} | חדרים: ${property.rooms || '?'} | שטח: ${property.area || '?'} מ"ר
-- ממ"ד: ${property.mamad || '?'} | מרפסת: ${property.balcony || '?'} | מחסן: ${property.storage || '?'} | חנייה: ${property.parking || '?'}
-${property.notes ? `- הערות: ${property.notes}` : ''}
-
-עסקאות אמיתיות שנמצאו מnadlan.gov.il (${allTx.length} עסקאות, 24 חודשים אחרונים):
-${txSummary}
-
-טווח מחירים שחושב:
-- מחיר מהיר: ₪${calculatedPrices.fast.toLocaleString()}
-- מחיר ריאלי: ₪${calculatedPrices.real.toLocaleString()}
-- מחיר תקרה: ₪${calculatedPrices.ceil.toLocaleString()}
-
-כתוב ניתוח מקצועי בעברית (4-5 משפטים) הכולל:
-1. מיקום הנכס ביחס לעסקאות שנמצאו
-2. השפעת הקומה והמאפיינים (ממ"ד, מרפסת וכו')
-3. המלצה לאסטרטגיית מחיר
-
-אחר כך, החזר JSON בלבד בשורה נפרדת:
-{"fast": מספר, "real": מספר, "ceil": מספר, "confidence": "גבוה/בינוני/נמוך", "note": "משפט קצר על הביטחון"}`;
-
+  const allTx = [...(transactions.building||[]),...(transactions.street||[])].filter(t=>t.price>0);
+  const prices = allTx.map(t=>t.price).sort((a,b)=>a-b);
+  const median = prices.length ? prices[Math.floor(prices.length/2)] : 0;
+  const calc = { fast: median?Math.round(median*.92/10000)*10000:0, real: median?Math.round(median*.97/10000)*10000:0, ceil: median?Math.round(median*1.05/10000)*10000:0 };
+  if (!key || !allTx.length) return res.json({ analysis: allTx.length?'':'לא נמצאו עסקאות.', prices: calc });
+  const txStr = allTx.slice(0,5).map(t=>`${t.address} ${t.houseNumber}, ק${t.floor??'?'}, ${t.rooms??'?'}חד, ${t.area??'?'}מ"ר: ₪${t.price.toLocaleString()} (${t.date})`).join('\n');
+  const prompt = `שמאי מקרקעין ישראלי. נתח ב-3 משפטים:\nנכס: ${property.type||'דירה'} ${property.rooms||'?'}חד ${property.area||'?'}מ"ר ק${property.floor||'?'} - ${property.street||''} ${property.houseNumber||''} ${property.city||''}\nעסקאות:\n${txStr}\nסיים עם: JSON:{"fast":מספר,"real":מספר,"ceil":מספר}`;
   try {
-    const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 800,
-        messages: [{ role: 'user', content: prompt }]
-      })
-    });
-
-    const claudeData = await claudeRes.json();
-    const text = claudeData.content?.[0]?.text || '';
-
-    // Extract JSON prices if Claude provided them
-    const jsonMatch = text.match(/\{[^{}]*"fast"[^{}]*\}/);
-    let aiPrices = calculatedPrices;
-    let analysis = text;
-
-    if (jsonMatch) {
-      try {
-        const parsed = JSON.parse(jsonMatch[0]);
-        aiPrices = {
-          fast: parsed.fast || calculatedPrices.fast,
-          real: parsed.real || calculatedPrices.real,
-          ceil: parsed.ceil || calculatedPrices.ceil,
-          confidence: parsed.confidence || 'בינוני',
-          note: parsed.note || ''
-        };
-        analysis = text.replace(jsonMatch[0], '').trim();
-      } catch (_) {}
-    }
-
-    res.json({ analysis, prices: aiPrices });
-  } catch (e) {
-    console.error('Claude error:', e.message);
-    // Return calculated prices even if Claude fails
-    res.json({
-      analysis: 'ניתוח AI לא זמין. המחירים חושבו על בסיס עסקאות בלבד.',
-      prices: calculatedPrices
-    });
-  }
+    const r = await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:400,messages:[{role:'user',content:prompt}]})});
+    const d = await r.json();
+    const text = d.content?.[0]?.text||'';
+    const jm = text.match(/JSON:\s*(\{[^{}]+\})/);
+    let ap=calc; let an=text.replace(/JSON:\s*\{[^{}]+\}/,'').trim();
+    if(jm){try{const p=JSON.parse(jm[1]);ap={fast:p.fast||calc.fast,real:p.real||calc.real,ceil:p.ceil||calc.ceil};}catch(_){}}
+    res.json({analysis:an,prices:ap});
+  } catch(e) { res.json({analysis:'AI לא זמין.',prices:calc}); }
 });
 
-// ── START ─────────────────────────────────────────────────────
 app.listen(PORT, () => {
   console.log(`✅ CMA Backend running on port ${PORT}`);
   console.log(`   Source: nadlan.gov.il`);
   console.log(`   Cache TTL: 1hr`);
 });
+Done
