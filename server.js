@@ -14,202 +14,176 @@ app.use(cors({ origin: '*', methods: ['GET', 'POST'] }));
 app.set('trust proxy', 1);
 app.use('/api/', rateLimit({ windowMs: 60000, max: 30 }));
 
-// govmap.gov.il API - Israeli government GIS with real estate transactions
-const GOVMAP_BASE = 'https://es.govmap.gov.il/TranzactionsTax/api';
-const GEOCODE_URL = 'https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/findAddressCandidates';
+const GOVMAP_API = 'https://www.govmap.gov.il/api';
 
-async function geocodeAddress(address) {
-  const url = GEOCODE_URL + '?SingleLine=' + encodeURIComponent(address) + '&countryCode=ISR&f=json&maxLocations=1';
-  const r = await fetch(url, { timeout: 10000 });
-  const data = await r.json();
-  if (data.candidates && data.candidates.length > 0) {
-    return { x: data.candidates[0].location.x, y: data.candidates[0].location.y };
-  }
-  return null;
-}
-
-async function govmapFetch(url) {
-  console.log('[govmap] GET', url.slice(0, 120));
+async function govmapPost(path, body) {
+  const url = GOVMAP_API + path;
+  console.log('[govmap POST]', url, JSON.stringify(body).slice(0,80));
   const r = await fetch(url, {
+    method: 'POST',
     headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36',
+      'Content-Type': 'application/json',
+      'User-Agent': 'Mozilla/5.0 Chrome/120.0.0.0 Safari/537.36',
       'Accept': 'application/json',
-      'Referer': 'https://www.govmap.gov.il/'
+      'Referer': 'https://www.govmap.gov.il/',
+      'Origin': 'https://www.govmap.gov.il'
     },
+    body: JSON.stringify(body),
     timeout: 15000
   });
-  console.log('[govmap] status=' + r.status);
+  console.log('[govmap POST] status=' + r.status);
   const text = await r.text();
-  console.log('[govmap] len=' + text.length + ' preview=' + text.slice(0, 80));
+  console.log('[govmap POST] preview=' + text.slice(0,80));
   return JSON.parse(text);
 }
 
-function normalizeTx(records, scope) {
-  if (!records || !Array.isArray(records)) return [];
-  return records
-    .filter(function(r) { return r && r.price > 0; })
-    .map(function(r) {
-      return {
-        address: r.address || r.streetName || '',
-        houseNumber: String(r.houseNum || r.houseNumber || ''),
-        floor: r.floor !== undefined ? r.floor : null,
-        rooms: r.rooms !== undefined ? r.rooms : null,
-        area: r.area || r.buildingArea || null,
-        price: r.price || r.dealAmount || 0,
-        pricePerSqm: r.area && r.area > 0 ? Math.round((r.price || 0) / r.area) : null,
-        date: r.date || r.dealDate || '',
-        neighborhood: r.neighborhood || '',
-        city: r.city || r.cityName || '',
-        assetType: r.assetType || '',
-        source: 'govmap.gov.il',
-        scope: scope
-      };
-    })
-    .slice(0, 8);
+async function govmapGet(path) {
+  const url = GOVMAP_API + path;
+  console.log('[govmap GET]', url.slice(0,100));
+  const r = await fetch(url, {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 Chrome/120.0.0.0 Safari/537.36',
+      'Accept': 'application/json',
+      'Referer': 'https://www.govmap.gov.il/',
+      'Origin': 'https://www.govmap.gov.il'
+    },
+    timeout: 15000
+  });
+  console.log('[govmap GET] status=' + r.status);
+  const text = await r.text();
+  console.log('[govmap GET] preview=' + text.slice(0,80));
+  return JSON.parse(text);
 }
 
-app.get('/health', function(req, res) {
-  res.json({ status: 'ok', version: '5.0.0', source: 'govmap.gov.il' });
-});
+function normalizeDeal(deal, scope) {
+  const price = deal.dealAmount || deal.price || 0;
+  const area = deal.area || deal.buildingArea || null;
+  return {
+    address: deal.addressDescription || deal.address || deal.streetName || '',
+    houseNumber: String(deal.houseNum || deal.houseNumber || ''),
+    floor: deal.floor !== undefined ? deal.floor : null,
+    rooms: deal.rooms !== undefined ? deal.rooms : null,
+    area: area,
+    price: price,
+    pricePerSqm: area && area > 0 ? Math.round(price / area) : null,
+    date: deal.dealDate || deal.date || '',
+    neighborhood: deal.neighborhood || '',
+    city: deal.city || deal.cityName || '',
+    assetType: deal.assetType || '',
+    source: 'govmap.gov.il',
+    scope: scope
+  };
+}
 
-app.get('/api/test', async function(req, res) {
+app.get('/health', (req, res) => res.json({ status: 'ok', version: '6.0.0', source: 'govmap.gov.il' }));
+
+app.get('/api/test', async (req, res) => {
   try {
-    // Test geocoding
-    var coords = await geocodeAddress('הרצל 1 רחובות');
-    if (!coords) return res.json({ success: false, error: 'geocoding failed' });
-
-    // Convert to Israel TM coords (approximate)
-    var x = Math.round((coords.x - 34.0) * 111000);
-    var y = Math.round((coords.y - 29.5) * 111000);
-
-    res.json({ success: true, geocoded: coords, source: 'govmap.gov.il' });
-  } catch(e) {
-    res.status(502).json({ error: e.message });
-  }
+    const r = await govmapPost('/search-service/autocomplete', { term: 'הרצל 1 רחובות', type: 0 });
+    res.json({ success: true, sample: r });
+  } catch(e) { res.status(502).json({ error: e.message }); }
 });
 
-app.post('/api/transactions', async function(req, res) {
-  var city = req.body.city;
-  var street = req.body.street;
-  var neighborhood = req.body.neighborhood || '';
-  var houseNumber = req.body.houseNumber || '';
-
+app.post('/api/transactions', async (req, res) => {
+  const { city, street, neighborhood='', houseNumber='' } = req.body;
   if (!city || !street) return res.status(400).json({ error: 'city and street required' });
 
-  var cacheKey = 'gm5_' + city + '_' + street + '_' + houseNumber;
-  var cached = cache.get(cacheKey);
-  if (cached) { console.log('[cache] hit'); return res.json(cached); }
+  const cacheKey = 'v6_' + city + '_' + street + '_' + houseNumber;
+  const cached = cache.get(cacheKey);
+  if (cached) return res.json(cached);
 
-  var now = new Date();
-  var fromDate = '01/01/' + (now.getFullYear() - 2);
-  var toDate = String(now.getDate()).padStart(2,'0') + '/' + String(now.getMonth()+1).padStart(2,'0') + '/' + now.getFullYear();
+  const now = new Date();
+  const startDate = (now.getFullYear()-2) + '-' + String(now.getMonth()+1).padStart(2,'0');
+  const endDate = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
 
   try {
-    // Step 1: Geocode address
-    var searchAddr = street + ' ' + (houseNumber || '1') + ' ' + city;
-    console.log('[geocode] ' + searchAddr);
-    var coords = await geocodeAddress(searchAddr);
-    if (!coords) throw new Error('Could not geocode address: ' + searchAddr);
-    console.log('[geocode] x=' + coords.x + ' y=' + coords.y);
+    const searchText = street + ' ' + (houseNumber||'1') + ' ' + city;
+    console.log('[search]', searchText);
+    const autocomplete = await govmapPost('/search-service/autocomplete', { term: searchText, type: 0 });
+    const results = autocomplete.results || autocomplete;
+    if (!results || !results.length) throw new Error('Address not found: ' + searchText);
+    const point = results[0].point || results[0].coordinates;
+    if (!point) throw new Error('No coordinates for: ' + searchText);
+    console.log('[point] x=' + point[0] + ' y=' + point[1]);
 
-    // Step 2: Search govmap for transactions near this point
-    // govmap uses Israel Transverse Mercator (ITM) coordinates
-    // Convert WGS84 to approximate ITM
-    var itm_x = Math.round(219529 + (coords.x - 34.7817676) * 96488.2);
-    var itm_y = Math.round(626626 + (coords.y - 31.6538079) * 111325.1);
-    console.log('[itm] x=' + itm_x + ' y=' + itm_y);
+    const entityResult = await govmapPost('/layers-catalog/entitiesByPoint', { point, layerIds: ['STREETS_LAYER', 'NEIGHBORHOOD_LAYER'] });
+    let polygonId = null, nbPolygonId = null;
+    if (entityResult && entityResult.layers) {
+      for (const layer of entityResult.layers) {
+        if (layer.layerId === 'STREETS_LAYER' && layer.features?.length) polygonId = layer.features[0].id;
+        if (layer.layerId === 'NEIGHBORHOOD_LAYER' && layer.features?.length) nbPolygonId = layer.features[0].id;
+      }
+    }
+    console.log('[polygon] street=' + polygonId + ' nb=' + nbPolygonId);
 
-    // Search in 300m radius
-    var radius = 300;
-    var url = GOVMAP_BASE + '/GetTransactionsByRadius?x=' + itm_x + '&y=' + itm_y + '&radius=' + radius + '&fromDate=' + fromDate + '&toDate=' + toDate + '&lyrs=10&pageSize=50&pageNumber=1';
+    let bDeals=[], sDeals=[], nDeals=[];
 
-    var data = await govmapFetch(url);
-    console.log('[govmap] response keys:', Object.keys(data || {}).join(','));
+    try {
+      const radiusData = await govmapGet('/real-estate/deals/' + point[0] + ',' + point[1] + '/150');
+      const radiusDeals = radiusData.deals || radiusData || [];
+      if (Array.isArray(radiusDeals)) {
+        if (houseNumber) {
+          bDeals = radiusDeals.filter(d => String(d.houseNum||d.houseNumber||'') === String(houseNumber)).slice(0,4);
+          sDeals = radiusDeals.filter(d => String(d.houseNum||d.houseNumber||'') !== String(houseNumber)).slice(0,8);
+        } else { sDeals = radiusDeals.slice(0,8); }
+      }
+    } catch(e) { console.log('[radius] failed:', e.message); }
 
-    var records = data.data || data.transactions || data.results || data || [];
-    if (!Array.isArray(records)) records = [];
-
-    // Separate building vs street vs neighborhood
-    var bData = [], sData = [], nData = [];
-    if (houseNumber) {
-      bData = records.filter(function(r) { return String(r.houseNum || r.houseNumber || '') === String(houseNumber); }).slice(0,4);
-      sData = records.filter(function(r) { return String(r.houseNum || r.houseNumber || '') !== String(houseNumber); }).slice(0,8);
-    } else {
-      sData = records.slice(0,8);
+    if (polygonId && sDeals.length < 4) {
+      try {
+        const streetData = await govmapGet('/real-estate/street-deals/' + polygonId + '?startDate=' + startDate + '&endDate=' + endDate + '&limit=20');
+        const sd = streetData.deals || streetData || [];
+        if (Array.isArray(sd)) sDeals = sd.slice(0,8);
+      } catch(e) { console.log('[street] failed:', e.message); }
     }
 
-    // Neighborhood: wider search
-    var nbUrl = GOVMAP_BASE + '/GetTransactionsByRadius?x=' + itm_x + '&y=' + itm_y + '&radius=1000&fromDate=' + fromDate + '&toDate=' + toDate + '&lyrs=10&pageSize=50&pageNumber=1';
-    try {
-      var nbData = await govmapFetch(nbUrl);
-      var nbRecords = nbData.data || nbData.transactions || nbData.results || nbData || [];
-      if (Array.isArray(nbRecords)) {
-        nData = nbRecords.filter(function(r) {
-          var hn = String(r.houseNum || r.houseNumber || '');
-          return !bData.some(function(b) { return String(b.houseNumber) === hn; }) && !sData.some(function(s) { return String(s.houseNumber) === hn; });
-        }).slice(0,8);
-      }
-    } catch(e) { console.log('[nb] failed:', e.message); }
+    if (nbPolygonId) {
+      try {
+        const nbData = await govmapGet('/real-estate/neighborhood-deals/' + nbPolygonId + '?startDate=' + startDate + '&endDate=' + endDate + '&limit=20');
+        const nd = nbData.deals || nbData || [];
+        if (Array.isArray(nd)) nDeals = nd.filter(d => !(d.addressDescription||'').includes(street)).slice(0,8);
+      } catch(e) { console.log('[nb] failed:', e.message); }
+    }
 
-    var result = {
-      building: normalizeTx(bData, 'building'),
-      street: normalizeTx(sData, 'street'),
-      neighborhood: normalizeTx(nData, 'neighborhood'),
-      meta: { city: city, street: street, neighborhood: neighborhood, houseNumber: houseNumber, source: 'govmap.gov.il', coords: coords, fetchedAt: new Date().toISOString() }
+    const result = {
+      building: bDeals.map(d => normalizeDeal(d,'building')),
+      street: sDeals.map(d => normalizeDeal(d,'street')),
+      neighborhood: nDeals.map(d => normalizeDeal(d,'neighborhood')),
+      meta: { city, street, houseNumber, source: 'govmap.gov.il', polygonId, point, fetchedAt: new Date().toISOString() }
     };
 
     console.log('[tx] b=' + result.building.length + ' s=' + result.street.length + ' n=' + result.neighborhood.length);
-    if (result.building.length + result.street.length + result.neighborhood.length > 0) cache.set(cacheKey, result);
+    if (result.building.length+result.street.length+result.neighborhood.length > 0) cache.set(cacheKey, result);
     res.json(result);
-
   } catch(e) {
     console.error('[tx] Error:', e.message);
     res.status(502).json({ error: e.message });
   }
 });
 
-app.post('/api/analyze', async function(req, res) {
-  var property = req.body.property;
-  var transactions = req.body.transactions;
-  var claudeKey = req.body.claudeKey;
-  var key = claudeKey || process.env.CLAUDE_API_KEY;
-
-  var allTx = ((transactions.building || []).concat(transactions.street || [])).filter(function(t) { return t.price > 0; });
-  var prices = allTx.map(function(t) { return t.price; }).sort(function(a,b) { return a-b; });
-  var median = prices.length ? prices[Math.floor(prices.length/2)] : 0;
-  var calc = {
-    fast: median ? Math.round(median * 0.92 / 10000) * 10000 : 0,
-    real: median ? Math.round(median * 0.97 / 10000) * 10000 : 0,
-    ceil: median ? Math.round(median * 1.05 / 10000) * 10000 : 0
-  };
-
-  if (!key || !allTx.length) return res.json({ analysis: allTx.length ? '' : 'לא נמצאו עסקאות לניתוח.', prices: calc });
-
-  var txStr = allTx.slice(0,5).map(function(t) {
-    return (t.address||'') + ', ק' + (t.floor!==null?t.floor:'?') + ', ' + (t.rooms||'?') + 'חד, ' + (t.area||'?') + 'מ"ר: ₪' + t.price.toLocaleString() + ' (' + (t.date||'') + ')';
-  }).join('\n');
-
-  var prompt = 'שמאי מקרקעין ישראלי. נתח ב-3 משפטים:\nנכס: ' + (property.type||'דירה') + ' ' + (property.rooms||'?') + 'חד ' + (property.area||'?') + 'מ"ר ק' + (property.floor||'?') + ' - ' + (property.street||'') + ' ' + (property.houseNumber||'') + ' ' + (property.city||'') + '\nעסקאות (govmap.gov.il):\n' + txStr + '\nסיים עם: JSON:{"fast":NUMBER,"real":NUMBER,"ceil":NUMBER}';
-
+app.post('/api/analyze', async (req, res) => {
+  const { property, transactions, claudeKey } = req.body;
+  const key = claudeKey || process.env.CLAUDE_API_KEY;
+  const allTx = [...(transactions.building||[]),...(transactions.street||[])].filter(t=>t.price>0);
+  const prices = allTx.map(t=>t.price).sort((a,b)=>a-b);
+  const median = prices.length ? prices[Math.floor(prices.length/2)] : 0;
+  const calc = { fast: median?Math.round(median*.92/10000)*10000:0, real: median?Math.round(median*.97/10000)*10000:0, ceil: median?Math.round(median*1.05/10000)*10000:0 };
+  if (!key||!allTx.length) return res.json({ analysis: allTx.length?'':'לא נמצאו עסקאות.', prices: calc });
+  const txStr = allTx.slice(0,5).map(t => (t.address||'')+', ק'+(t.floor??'?')+', '+(t.rooms||'?')+'חד, '+(t.area||'?')+'מ"ר: ₪'+t.price.toLocaleString()+' ('+(t.date||')')).join('
+');
+  const prompt = 'שמאי ישראלי. נתח ב-3 משפטים:נכס: '+(property.type||'דירה')+' '+(property.rooms||'?')+'חד '+(property.area||'?')+'מ"ר - '+(property.street||'')+' '+(property.city||'')+'
+עסקאות:
+'+txStr+'
+JSON:{"fast":NUMBER,"real":NUMBER,"ceil":NUMBER}';
   try {
-    var r = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 400, messages: [{ role: 'user', content: prompt }] })
-    });
-    var d = await r.json();
-    var text = d.content && d.content[0] ? d.content[0].text : '';
-    var jm = text.match(/JSON:\s*(\{[^{}]+\})/);
-    var ap = calc;
-    var an = text.replace(/JSON:\s*\{[^{}]+\}/, '').trim();
-    if (jm) { try { var p = JSON.parse(jm[1]); ap = { fast: p.fast||calc.fast, real: p.real||calc.real, ceil: p.ceil||calc.ceil }; } catch(_) {} }
-    res.json({ analysis: an, prices: ap });
-  } catch(e) {
-    res.json({ analysis: 'AI לא זמין.', prices: calc });
-  }
+    const r = await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:400,messages:[{role:'user',content:prompt}]})});
+    const d = await r.json();
+    const text = d.content?.[0]?.text||'';
+    const jm = text.match(/JSON:s*({[^{}]+})/);
+    let ap=calc; const an=text.replace(/JSON:s*{[^{}]+}/,'').trim();
+    if(jm){try{const p=JSON.parse(jm[1]);ap={fast:p.fast||calc.fast,real:p.real||calc.real,ceil:p.ceil||calc.ceil};}catch(_){}}
+    res.json({analysis:an,prices:ap});
+  } catch(e) { res.json({analysis:'AI לא זמין.',prices:calc}); }
 });
 
-app.listen(PORT, function() {
-  console.log('CMA Backend v5.0 running on port ' + PORT);
-  console.log('Source: govmap.gov.il + ArcGIS geocoding');
-});
+app.listen(PORT, () => { console.log('CMA Backend v6.0 port ' + PORT); console.log('Source: govmap.gov.il'); });
