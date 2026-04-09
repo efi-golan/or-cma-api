@@ -158,4 +158,3 @@ app.listen(PORT, () => {
   console.log(`   Source: nadlan.gov.il`);
   console.log(`   Cache TTL: 1hr`);
 });
-Done
