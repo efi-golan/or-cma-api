@@ -186,10 +186,10 @@ app.post('/api/analyze', async function(req, res) {
   }
 
   var txStr = allTx.slice(0, 5).map(function(t) {
-    return (t.address || '') + ', ק' + (t.floor !== null ? t.floor : '?') + ', ' + (t.rooms || '?') + 'חד, ' + (t.area || '?') + 'מ"ר: ש"']' + t.price.toLocaleString() + ' (' + (t.date || '') + ')';
+    return (t.address || '') + ', ק' + (t.floor !== null ? t.floor : '?') + ', ' + (t.rooms || '?') + 'חד, ' + (t.area || '?') + 'מ"ר: ש"ח' + t.price.toLocaleString() + ' (' + (t.date || '') + ')';
   }).join('\n');
 
-  var prompt = 'שמאי מקרקעין ישראלי. נתח 3 משפטים:\nנכס: ' + (property.type || 'דירה') + ' ' + (property.rooms || '?') + 'חד ' + (property.area || '?') + 'מ"ר ק' + (property.floor || '?') + ' - ' + (property.street || '') + ' ' + (property.houseNumber || '') + ' ' + (property.city || '') + '\nעסקאות (govmap.gov.il):\n' + txStr + '\nסיים עה: JSON:{"fast":NUMBER,"real":NUMBER,"ceil":NUMBER}';
+  var prompt = 'שמאי מקרקעין ישראלי. נתח ב-3 משפטים:\nנכס: ' + (property.type || 'דירה') + ' ' + (property.rooms || '?') + 'חד ' + (property.area || '?') + 'מ"ר ק' + (property.floor || '?') + ' - ' + (property.street || '') + ' ' + (property.houseNumber || '') + ' ' + (property.city || '') + '\nעסקאות (govmap.gov.il):\n' + txStr + '\nסיים עם: JSON:{"fast":NUMBER,"real":NUMBER,"ceil":NUMBER}';
 
   try {
     var r = await fetch('https://api.anthropic.com/v1/messages', {
@@ -210,7 +210,7 @@ app.post('/api/analyze', async function(req, res) {
     }
     res.json({ analysis: an, prices: ap });
   } catch(e) {
-    res.json({ analysis: 'AI lot available.', prices: calc });
+    res.json({ analysis: 'AI לא זמין.', prices: calc });
   }
 });
 
