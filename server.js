@@ -11,6 +11,7 @@ const PORT = process.env.PORT || 3001;
 
 app.use(express.json());
 app.use(cors({ origin: '*', methods: ['GET', 'POST'] }));
+app.set('trust proxy', 1);
 app.use('/api/', rateLimit({ windowMs: 60000, max: 30 }));
 
 // data.gov.il - Official Israeli government open data API
