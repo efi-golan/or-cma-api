@@ -4,18 +4,32 @@ const fetch = require('node-fetch');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
 const NodeCache = require('node-cache');
+const path = require('path');
+const fs = require('fs');
 
 const app = express();
 const cache = new NodeCache({ stdTTL: 3600 });
 const PORT = process.env.PORT || 3001;
+const reports = {};
 
-app.use(express.json());
-app.use(cors({ origin: '*', methods: ['GET', 'POST'] }));
+app.use(express.json({ limit: '10mb' }));
+app.use(cors({ origin: '*', methods: ['GET', 'POST', 'PATCH', 'DELETE'] }));
 app.set('trust proxy', 1);
-app.use('/api/', rateLimit({ windowMs: 60000, max: 30 }));
+app.use('/api/', rateLimit({ windowMs: 60000, max: 60 }));
 
-const GOVMAP_API = 'https://www.govmap.gov.il/api';
-const HEADERS = {
+// ── SERVE FRONTEND ──────────────────────────────────────────
+app.get('/', (req, res) => {
+  const htmlPath = path.join(__dirname, 'index.html');
+  if (fs.existsSync(htmlPath)) {
+    res.sendFile(htmlPath);
+  } else {
+    res.send('<h1>CMA System</h1><p>index.html not found</p>');
+  }
+});
+
+// ── GOVMAP ──────────────────────────────────────────────────
+const GOVMAP = 'https://www.govmap.gov.il/api';
+const GH = {
   'Content-Type': 'application/json',
   'User-Agent': 'Mozilla/5.0 Chrome/120.0.0.0 Safari/537.36',
   'Accept': 'application/json',
@@ -24,197 +38,199 @@ const HEADERS = {
 };
 
 async function gPost(path, body) {
-  const r = await fetch(GOVMAP_API + path, { method: 'POST', headers: HEADERS, body: JSON.stringify(body), timeout: 15000 });
-  console.log('[gPost]', path, 'status=' + r.status);
-  const t = await r.text();
-  console.log('[gPost] preview=' + t.slice(0,80));
-  return JSON.parse(t);
+  var r = await fetch(GOVMAP + path, { method: 'POST', headers: GH, body: JSON.stringify(body), timeout: 15000 });
+  console.log('[gPost]', path, r.status);
+  return JSON.parse(await r.text());
 }
 
 async function gGet(path) {
-  const r = await fetch(GOVMAP_API + path, { headers: HEADERS, timeout: 15000 });
-  console.log('[gGet]', path.slice(0,80), 'status=' + r.status);
-  const t = await r.text();
-  console.log('[gGet] preview=' + t.slice(0,80));
-  return JSON.parse(t);
+  var r = await fetch(GOVMAP + path, { headers: GH, timeout: 15000 });
+  console.log('[gGet]', path.slice(0,60), r.status);
+  return JSON.parse(await r.text());
 }
 
-function norm(deal, scope) {
-  var price = deal.dealAmount || deal.price || 0;
-  var area = deal.area || deal.buildingArea || null;
+function parsePoint(shape) {
+  if (!shape) return null;
+  var m = shape.match(/POINT\(([0-9.]+)\s+([0-9.]+)\)/);
+  return m ? [parseFloat(m[1]), parseFloat(m[2])] : null;
+}
+
+function normDeal(d, scope) {
+  var price = d.dealAmount || 0;
+  var area = d.assetArea || null;
   return {
-    address: deal.addressDescription || deal.address || deal.streetName || '',
-    houseNumber: String(deal.houseNum || deal.houseNumber || ''),
-    floor: deal.floor !== undefined ? deal.floor : null,
-    rooms: deal.rooms !== undefined ? deal.rooms : null,
+    address: (d.streetName || '') + (d.houseNumber ? ' ' + d.houseNumber : ''),
+    houseNumber: String(d.houseNumber || d.houseNum || ''),
+    floor: d.floorNumber !== undefined ? d.floorNumber : null,
+    rooms: d.assetRoomNum !== undefined ? d.assetRoomNum : null,
     area: area,
     price: price,
     pricePerSqm: (area && area > 0) ? Math.round(price / area) : null,
-    date: deal.dealDate || deal.date || '',
-    neighborhood: deal.neighborhood || '',
-    city: deal.city || deal.cityName || '',
-    assetType: deal.assetType || '',
-    source: 'govmap.gov.il',
-    scope: scope
+    date: d.dealDate ? String(d.dealDate).slice(0,10) : '',
+    city: d.settlementNameHeb || '',
+    scope: scope,
+    removed: false
   };
 }
 
-app.get('/health', function(req, res) {
-  res.json({ status: 'ok', version: '7.0.0', source: 'govmap.gov.il' });
-});
+async function fetchTransactions(city, street, houseNumber) {
+  var searchText = street + ' ' + (houseNumber || '1') + ' ' + city;
+  var acResults = [];
+  for (var q of [searchText, street + ' ' + city]) {
+    try {
+      var ac = await gPost('/search-service/autocomplete', { searchText: q, language: 'he', isAccurate: false, maxResults: 10 });
+      acResults = ac.results || [];
+      if (acResults.length) break;
+    } catch(e) {}
+  }
+  if (!acResults.length) throw new Error('כתובת לא נמצאה: ' + searchText);
 
-app.get('/api/test', async function(req, res) {
-  try {
-    var r = await gPost('/search-service/autocomplete', { term: 'הרצל 1 רחובות', type: 0 });
-    res.json({ success: true, sample: r });
-  } catch(e) { res.status(502).json({ error: e.message }); }
-});
-
-app.post('/api/transactions', async function(req, res) {
-  var city = req.body.city;
-  var street = req.body.street;
-  var neighborhood = req.body.neighborhood || '';
-  var houseNumber = req.body.houseNumber || '';
-
-  if (!city || !street) return res.status(400).json({ error: 'city and street required' });
-
-  var cacheKey = 'v7_' + city + '_' + street + '_' + houseNumber;
-  var cached = cache.get(cacheKey);
-  if (cached) { console.log('[cache] hit'); return res.json(cached); }
+  var point = null, polygons = [];
+  for (var result of acResults.slice(0,3)) {
+    var p = parsePoint(result.shape);
+    if (!p) continue;
+    for (var r of [50, 200, 500, 1000, 2000]) {
+      try {
+        var raw = await gGet('/real-estate/deals/' + p[0] + ',' + p[1] + '/' + r);
+        var arr = Array.isArray(raw) ? raw : (raw && typeof raw === 'object' ? Object.values(raw) : []);
+        if (arr.length > 0) { point = p; polygons = arr; break; }
+      } catch(e) {}
+    }
+    if (polygons.length) break;
+  }
+  if (!point) point = parsePoint(acResults[0].shape);
+  if (!point) throw new Error('לא נמצאו קואורדינטות');
 
   var now = new Date();
-  var startDate = (now.getFullYear() - 2) + '-' + String(now.getMonth() + 1).padStart(2, '0');
-  var endDate = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+  var sd = (now.getFullYear()-2) + '-' + String(now.getMonth()+1).padStart(2,'0');
+  var ed = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
+  var bDeals = [], sDeals = [], nDeals = [];
 
+  if (polygons.length > 0) {
+    var poly0 = polygons[0];
+    var polyId = String(poly0.polygon_id || poly0.polygonId || poly0.id || poly0.objectid || '').trim();
+    console.log('[polygon] id=', polyId, 'keys=', Object.keys(poly0).join(','));
+
+    if (polyId) {
+      try {
+        var sdRaw = await gGet('/real-estate/street-deals/' + polyId + '?startDate=' + sd + '&endDate=' + ed + '&limit=30&dealType=2');
+        var sdArr = Array.isArray(sdRaw) ? sdRaw : (sdRaw && sdRaw.data ? sdRaw.data : []);
+        console.log('[street-deals]', sdArr.length, 'deals');
+        sdArr.forEach(function(d) {
+          var hn = String(d.houseNumber || d.houseNum || '');
+          if (houseNumber && hn === String(houseNumber)) bDeals.push(d);
+          else sDeals.push(d);
+        });
+        bDeals = bDeals.slice(0,5); sDeals = sDeals.slice(0,8);
+      } catch(e) { console.log('[street]', e.message); }
+
+      try {
+        var ndRaw = await gGet('/real-estate/neighborhood-deals/' + polyId + '?startDate=' + sd + '&endDate=' + ed + '&limit=20&dealType=2');
+        var ndArr = Array.isArray(ndRaw) ? ndRaw : (ndRaw && ndRaw.data ? ndRaw.data : []);
+        nDeals = ndArr.filter(function(d) { return !(d.streetName||'').includes(street); }).slice(0,8);
+      } catch(e) { console.log('[nb]', e.message); }
+    }
+  }
+
+  return {
+    building: bDeals.map(function(d) { return normDeal(d,'building'); }),
+    street: sDeals.map(function(d) { return normDeal(d,'street'); }),
+    neighborhood: nDeals.map(function(d) { return normDeal(d,'neighborhood'); }),
+    meta: { point: point, polygons: polygons.length, source: 'govmap.gov.il', fetchedAt: new Date().toISOString() }
+  };
+}
+
+function calcPricing(tx) {
+  var all = ((tx.building||[]).concat(tx.street||[])).filter(function(t) { return t.price>0 && !t.removed; });
+  var prices = all.map(function(t) { return t.price; }).sort(function(a,b) { return a-b; });
+  var med = prices.length ? prices[Math.floor(prices.length/2)] : 0;
+  return {
+    fast: med ? Math.round(med*0.92/10000)*10000 : 0,
+    real: med ? Math.round(med*0.97/10000)*10000 : 0,
+    ceil: med ? Math.round(med*1.05/10000)*10000 : 0
+  };
+}
+
+// ── ROUTES ──────────────────────────────────────────────────
+app.get('/health', function(req, res) {
+  res.json({ status: 'ok', version: '3.0.0', source: 'govmap.gov.il', reports: Object.keys(reports).length });
+});
+
+app.post('/api/reports', function(req, res) {
+  var id = Math.random().toString(36).slice(2,11);
+  reports[id] = { id, status:'collecting', property:{}, transactions:null, pricing:null, analysis:null, audit:[] };
+  res.json({ reportId: id });
+});
+
+app.patch('/api/property-input/:id', function(req, res) {
+  var r = reports[req.params.id];
+  if (!r) return res.status(404).json({ error:'not found' });
+  r.property = Object.assign({}, r.property, req.body);
+  res.json({ property: r.property });
+});
+
+app.post('/api/generate/:id', async function(req, res) {
+  var r = reports[req.params.id];
+  if (!r) return res.status(404).json({ error:'not found' });
+  var p = r.property;
+  if (!p.city || !p.street) return res.status(400).json({ error:'city and street required' });
   try {
-    var searchText = street + ' ' + (houseNumber || '1') + ' ' + city;
-    console.log('[search]', searchText);
-    var ac = await gPost('/search-service/autocomplete', { term: searchText, type: 0 });
-    var results = ac.results || ac;
-    if (!results || !results.length) throw new Error('Address not found: ' + searchText);
-    var point = results[0].point || results[0].coordinates;
-    if (!point) throw new Error('No coordinates for: ' + searchText);
-    console.log('[point] x=' + point[0] + ' y=' + point[1]);
-
-    var entityResult = await gPost('/layers-catalog/entitiesByPoint', { point: point, layerIds: ['STREETS_LAYER', 'NEIGHBORHOOD_LAYER'] });
-    var polygonId = null, nbPolygonId = null;
-    if (entityResult && entityResult.layers) {
-      for (var i = 0; i < entityResult.layers.length; i++) {
-        var layer = entityResult.layers[i];
-        if (layer.layerId === 'STREETS_LAYER' && layer.features && layer.features.length > 0) {
-          polygonId = layer.features[0].id;
-        }
-        if (layer.layerId === 'NEIGHBORHOOD_LAYER' && layer.features && layer.features.length > 0) {
-          nbPolygonId = layer.features[0].id;
-        }
-      }
-    }
-    console.log('[polygon] street=' + polygonId + ' nb=' + nbPolygonId);
-
-    var bDeals = [], sDeals = [], nDeals = [];
-
-    try {
-      var radiusData = await gGet('/real-estate/deals/' + point[0] + ',' + point[1] + '/150');
-      var rd = radiusData.deals || radiusData || [];
-      if (Array.isArray(rd)) {
-        if (houseNumber) {
-          bDeals = rd.filter(function(d) { return String(d.houseNum || d.houseNumber || '') === String(houseNumber); }).slice(0, 4);
-          sDeals = rd.filter(function(d) { return String(d.houseNum || d.houseNumber || '') !== String(houseNumber); }).slice(0, 8);
-        } else {
-          sDeals = rd.slice(0, 8);
-        }
-      }
-    } catch(e) { console.log('[radius] failed:', e.message); }
-
-    if (polygonId && sDeals.length < 4) {
-      try {
-        var sd = await gGet('/real-estate/street-deals/' + polygonId + '?startDate=' + startDate + '&endDate=' + endDate + '&limit=20');
-        var sdArr = sd.deals || sd || [];
-        if (Array.isArray(sdArr)) sDeals = sdArr.slice(0, 8);
-      } catch(e) { console.log('[street] failed:', e.message); }
-    }
-
-    if (nbPolygonId) {
-      try {
-        var nd = await gGet('/real-estate/neighborhood-deals/' + nbPolygonId + '?startDate=' + startDate + '&endDate=' + endDate + '&limit=20');
-        var ndArr = nd.deals || nd || [];
-        if (Array.isArray(ndArr)) {
-          nDeals = ndArr.filter(function(d) {
-            var addr = d.addressDescription || d.address || '';
-            return addr.indexOf(street) === -1;
-          }).slice(0, 8);
-        }
-      } catch(e) { console.log('[nb] failed:', e.message); }
-    }
-
-    var result = {
-      building: bDeals.map(function(d) { return norm(d, 'building'); }),
-      street: sDeals.map(function(d) { return norm(d, 'street'); }),
-      neighborhood: nDeals.map(function(d) { return norm(d, 'neighborhood'); }),
-      meta: { city: city, street: street, houseNumber: houseNumber, source: 'govmap.gov.il', polygonId: polygonId, point: point, fetchedAt: new Date().toISOString() }
-    };
-
-    console.log('[tx] b=' + result.building.length + ' s=' + result.street.length + ' n=' + result.neighborhood.length);
-    if (result.building.length + result.street.length + result.neighborhood.length > 0) {
-      cache.set(cacheKey, result);
-    }
-    res.json(result);
-
+    var tx = await fetchTransactions(p.city, p.street, p.houseNumber||'');
+    r.transactions = tx;
+    r.pricing = calcPricing(tx);
+    r.status = 'generated';
+    res.json({ success:true, transactions:tx, pricing:r.pricing });
   } catch(e) {
-    console.error('[tx] Error:', e.message);
-    res.status(502).json({ error: e.message });
+    res.status(502).json({ error:e.message });
   }
 });
 
-app.post('/api/analyze', async function(req, res) {
-  var property = req.body.property;
-  var transactions = req.body.transactions;
-  var claudeKey = req.body.claudeKey;
-  var key = claudeKey || process.env.CLAUDE_API_KEY;
+app.delete('/api/analysis/:id/transactions/:scope/:index', function(req, res) {
+  var r = reports[req.params.id];
+  if (!r || !r.transactions) return res.status(404).json({ error:'not found' });
+  var arr = r.transactions[req.params.scope];
+  var idx = parseInt(req.params.index);
+  if (!arr || !arr[idx]) return res.status(404).json({ error:'tx not found' });
+  arr[idx].removed = true;
+  r.pricing = calcPricing(r.transactions);
+  res.json({ success:true, pricing:r.pricing });
+});
 
-  var allTx = ((transactions.building || []).concat(transactions.street || [])).filter(function(t) { return t.price > 0; });
-  var prices = allTx.map(function(t) { return t.price; }).sort(function(a, b) { return a - b; });
-  var median = prices.length ? prices[Math.floor(prices.length / 2)] : 0;
-  var calc = {
-    fast: median ? Math.round(median * 0.92 / 10000) * 10000 : 0,
-    real: median ? Math.round(median * 0.97 / 10000) * 10000 : 0,
-    ceil: median ? Math.round(median * 1.05 / 10000) * 10000 : 0
-  };
+app.patch('/api/analysis/:id/pricing', function(req, res) {
+  var r = reports[req.params.id];
+  if (!r) return res.status(404).json({ error:'not found' });
+  r.pricing = req.body;
+  res.json({ pricing:r.pricing });
+});
 
-  if (!key || !allTx.length) {
-    return res.json({ analysis: allTx.length ? '' : 'לא נמצאו עסקאות לניתוח.', prices: calc });
-  }
-
-  var txStr = allTx.slice(0, 5).map(function(t) {
-    return (t.address || '') + ', ק' + (t.floor !== null ? t.floor : '?') + ', ' + (t.rooms || '?') + 'חד, ' + (t.area || '?') + 'מ"ר: ש"ח' + t.price.toLocaleString() + ' (' + (t.date || '') + ')';
+app.post('/api/analyze/:id', async function(req, res) {
+  var r = reports[req.params.id];
+  if (!r || !r.transactions) return res.status(400).json({ error:'no transactions' });
+  var key = req.body.claudeKey || process.env.CLAUDE_API_KEY;
+  if (!key) return res.json({ analysis:'נדרש Claude API Key.' });
+  var all = ((r.transactions.building||[]).concat(r.transactions.street||[])).filter(function(t) { return t.price>0&&!t.removed; });
+  if (!all.length) return res.json({ analysis:'אין עסקאות לניתוח.' });
+  var p = r.property;
+  var txStr = all.slice(0,6).map(function(t) {
+    return (t.address||'') + ', ק'+(t.floor!=null?t.floor:'?')+', '+(t.rooms||'?')+'חד, '+(t.area||'?')+'מ"ר: ₪'+t.price.toLocaleString()+' ('+(t.date||'')+')';
   }).join('\n');
-
-  var prompt = 'שמאי מקרקעין ישראלי. נתח ב-3 משפטים:\nנכס: ' + (property.type || 'דירה') + ' ' + (property.rooms || '?') + 'חד ' + (property.area || '?') + 'מ"ר ק' + (property.floor || '?') + ' - ' + (property.street || '') + ' ' + (property.houseNumber || '') + ' ' + (property.city || '') + '\nעסקאות (govmap.gov.il):\n' + txStr + '\nסיים עם: JSON:{"fast":NUMBER,"real":NUMBER,"ceil":NUMBER}';
-
+  var prompt = 'שמאי מקרקעין ישראלי. נתח ב-3-4 משפטים:\nנכס: '+(p.type||'דירה')+' '+(p.rooms||'?')+' חד, '+(p.area||'?')+'מ"ר, ק'+(p.floor||'?')+', '+(p.street||'')+' '+(p.houseNumber||'')+' '+(p.city||'')+'\nעסקאות:\n'+txStr+'\nסיים: JSON:{"fast":NUMBER,"real":NUMBER,"ceil":NUMBER}';
   try {
-    var r = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 400, messages: [{ role: 'user', content: prompt }] })
+    var resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method:'POST', headers:{'Content-Type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01'},
+      body:JSON.stringify({ model:'claude-sonnet-4-20250514', max_tokens:500, messages:[{role:'user',content:prompt}] })
     });
-    var d = await r.json();
-    var text = d.content && d.content[0] ? d.content[0].text : '';
+    var d = await resp.json();
+    var text = d.content&&d.content[0]?d.content[0].text:'';
     var jm = text.match(/JSON:\s*(\{[^{}]+\})/);
-    var ap = calc;
-    var an = text.replace(/JSON:\s*\{[^{}]+\}/, '').trim();
-    if (jm) {
-      try {
-        var p = JSON.parse(jm[1]);
-        ap = { fast: p.fast || calc.fast, real: p.real || calc.real, ceil: p.ceil || calc.ceil };
-      } catch(_) {}
-    }
-    res.json({ analysis: an, prices: ap });
-  } catch(e) {
-    res.json({ analysis: 'AI לא זמין.', prices: calc });
-  }
+    var an = text.replace(/JSON:\s*\{[^{}]+\}/,'').trim();
+    if (jm) { try { var pr = JSON.parse(jm[1]); r.pricing = pr; } catch(_) {} }
+    r.analysis = an;
+    res.json({ analysis:an, pricing:r.pricing });
+  } catch(e) { res.json({ analysis:'שגיאה: '+e.message }); }
 });
 
 app.listen(PORT, function() {
-  console.log('CMA Backend v7.0 running on port ' + PORT);
-  console.log('Source: govmap.gov.il official API');
+  console.log('CMA v3.0 running on port', PORT);
+  console.log('Frontend: / | API: /api/*');
 });

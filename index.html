@@ -1,0 +1,1224 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="he">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CMA – אור נכסים</title>
+<link href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --navy:#08212d;--cyan:#25bbec;--gold:#dab375;
+  --navy2:#0d2d3d;--navy3:#122838;
+  --border:rgba(218,179,117,0.18);
+  --cyan-dim:rgba(37,187,236,0.10);
+  --text:#e8f4f8;--muted:rgba(232,244,248,0.52);
+}
+body{background:var(--navy);color:var(--text);font-family:"Assistant",sans-serif;direction:rtl;min-height:100vh;overflow-x:hidden}
+.topbar{background:var(--navy2);border-bottom:1px solid var(--border);padding:0 20px;display:flex;align-items:center;gap:12px;height:54px;position:sticky;top:0;z-index:100}
+.topbar img{height:26px;width:auto}
+.topbar-info{display:flex;flex-direction:column}
+.topbar-title{font-size:13px;font-weight:800;color:var(--gold)}
+.topbar-sub{font-size:9px;color:var(--muted);font-weight:600}
+.topbar-right{margin-right:auto;display:flex;align-items:center;gap:8px}
+.btn-new{background:var(--gold);color:var(--navy);font-size:12px;font-weight:900;padding:7px 16px;border-radius:3px;cursor:pointer;border:none;font-family:inherit}
+.btn-new:hover{opacity:.88}
+.status-dot{width:7px;height:7px;border-radius:50%;background:#22c55e;flex-shrink:0}
+
+/* LAYOUT */
+.layout{display:grid;grid-template-columns:370px 1fr;height:calc(100vh - 54px)}
+.sidebar{background:var(--navy3);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
+.main{overflow-y:auto;padding:20px;background:var(--navy)}
+
+/* FREE TEXT */
+.freetext-panel{padding:12px 14px;border-bottom:1px solid var(--border);background:rgba(37,187,236,.04)}
+.freetext-label{font-size:10px;font-weight:800;color:var(--cyan);letter-spacing:.1em;margin-bottom:6px;display:flex;align-items:center;gap:6px}
+.ai-badge{background:var(--cyan);color:var(--navy);font-size:9px;font-weight:900;padding:1px 6px;border-radius:3px}
+.freetext-area{width:100%;background:rgba(255,255,255,.05);border:1px solid rgba(37,187,236,.22);border-radius:5px;padding:9px 11px;font-size:12px;color:var(--text);font-family:inherit;direction:rtl;resize:vertical;min-height:68px;line-height:1.5}
+.freetext-area:focus{outline:none;border-color:var(--cyan)}
+.freetext-area::placeholder{color:var(--muted)}
+.freetext-btn{width:100%;margin-top:6px;background:var(--cyan);border:none;color:var(--navy);font-weight:900;font-size:12px;padding:8px;border-radius:4px;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:5px}
+.freetext-btn:hover{opacity:.85}
+.freetext-btn:disabled{opacity:.4;cursor:default}
+
+/* CHAT */
+.chat-area{flex:1;padding:12px;display:flex;flex-direction:column;gap:9px;overflow-y:auto}
+.bubble{padding:9px 12px;border-radius:10px;font-size:12.5px;line-height:1.55;max-width:93%}
+.bubble.bot{background:var(--cyan-dim);border:1px solid rgba(37,187,236,.18);align-self:flex-start;border-radius:4px 10px 10px 10px}
+.bubble.user{background:rgba(218,179,117,.10);border:1px solid rgba(218,179,117,.18);align-self:flex-end;border-radius:10px 4px 10px 10px}
+.bubble b{color:var(--cyan)}
+.bubble.extract{border-right:3px solid var(--cyan);background:rgba(37,187,236,.07)}
+.quick-btns{padding:6px 12px;display:flex;flex-wrap:wrap;gap:5px}
+.qbtn{background:rgba(37,187,236,.09);border:1px solid rgba(37,187,236,.2);color:var(--cyan);font-size:11px;font-weight:700;padding:4px 9px;border-radius:4px;cursor:pointer;font-family:inherit}
+.qbtn:hover{background:rgba(37,187,236,.17)}
+.chat-input-row{padding:9px 12px;border-top:1px solid var(--border);display:flex;gap:6px}
+.chat-inp{flex:1;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.10);border-radius:4px;padding:8px 10px;font-size:12px;color:var(--text);font-family:inherit;direction:rtl}
+.chat-inp:focus{outline:none;border-color:var(--cyan)}
+.chat-send{background:var(--cyan);border:none;color:var(--navy);font-weight:900;font-size:12px;padding:8px 14px;border-radius:4px;cursor:pointer;font-family:inherit}
+
+/* API KEY */
+.api-area{padding:9px 12px;border-top:1px solid var(--border)}
+.api-label{font-size:9px;color:var(--muted);font-weight:700;letter-spacing:.08em;margin-bottom:4px}
+.api-inp{width:100%;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.09);border-radius:3px;padding:6px 8px;font-size:11px;color:var(--text);direction:ltr;font-family:inherit}
+.api-inp:focus{outline:none;border-color:var(--cyan)}
+
+/* REPORT */
+.rpt-header{display:flex;justify-content:space-between;align-items:flex-start;padding:12px 0 16px;border-bottom:1px solid var(--border);margin-bottom:18px}
+.rpt-title{font-size:16px;font-weight:900}
+.rpt-addr{font-size:11px;color:var(--muted);margin-top:2px}
+.status-chip{display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:700;padding:3px 8px;border-radius:100px}
+.chip-col{background:rgba(218,179,117,.1);color:var(--gold);border:1px solid rgba(218,179,117,.25)}
+.chip-gen{background:rgba(37,187,236,.1);color:var(--cyan);border:1px solid rgba(37,187,236,.25)}
+.blink{width:5px;height:5px;border-radius:50%;background:currentColor;animation:blink 1.5s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
+
+.actions-row{display:flex;gap:7px;margin-bottom:18px;flex-wrap:wrap}
+.btn{padding:8px 16px;border-radius:4px;font-size:12px;font-weight:800;cursor:pointer;border:none;font-family:inherit;transition:.15s}
+.btn-cyan{background:var(--cyan);color:var(--navy)}
+.btn-cyan:hover{opacity:.85}
+.btn-outline{background:transparent;border:1px solid var(--cyan);color:var(--cyan)}
+.btn-gold{background:var(--gold);color:var(--navy)}
+.btn-gold:hover{opacity:.85}
+.btn:disabled{opacity:.35;cursor:default}
+
+/* PROP GRID */
+.section{margin-bottom:20px}
+.s-head{display:flex;align-items:center;gap:6px;margin-bottom:9px;border-bottom:1px solid var(--border);padding-bottom:6px}
+.s-dot{width:6px;height:6px;border-radius:50%;background:var(--cyan)}
+.s-head h2{font-size:12.5px;font-weight:800;color:var(--gold);letter-spacing:.05em}
+.prop-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.prop-box{background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:4px;padding:7px 10px}
+.prop-box .l{font-size:9px;color:var(--muted);font-weight:700;letter-spacing:.07em;margin-bottom:1px}
+.prop-box .v{font-size:13px;font-weight:800}
+
+/* MISSING FIELDS */
+.missing-section{background:rgba(218,179,117,.07);border:1px solid rgba(218,179,117,.22);border-radius:5px;padding:10px 12px;margin-bottom:14px}
+.missing-title{color:var(--gold);font-weight:800;font-size:11px;letter-spacing:.06em;margin-bottom:8px}
+.miss-row{display:flex;align-items:center;gap:6px;margin-bottom:5px}
+.miss-label{font-size:11px;color:var(--muted);font-weight:700;min-width:58px;flex-shrink:0}
+.miss-inp{flex:1;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.11);border-radius:3px;padding:5px 8px;font-size:12px;color:var(--text);font-family:inherit;direction:rtl}
+.miss-inp:focus{outline:none;border-color:var(--gold)}
+.miss-complete{background:var(--gold);border:none;color:var(--navy);font-weight:900;font-size:11px;padding:6px 14px;border-radius:3px;cursor:pointer;margin-top:6px;font-family:inherit}
+
+/* PRICE BAR */
+.price-bar{background:var(--navy3);border:1px solid var(--border);border-radius:5px;padding:14px;margin-bottom:16px}
+.price-row{display:flex;justify-content:space-around;align-items:center}
+.price-col{text-align:center}
+.price-col .pl{font-size:9px;color:var(--muted);font-weight:700;letter-spacing:.07em;margin-bottom:3px}
+.price-col .pv{font-size:17px;font-weight:900}
+.pv-fast{color:var(--gold)}
+.pv-real{color:var(--cyan);font-size:22px!important}
+.pv-ceil{color:#7dd3fc}
+.price-sep{width:1px;height:36px;background:var(--border)}
+
+/* TX TABLE */
+.tx-wrap{overflow-x:auto}
+.tx-table{width:100%;border-collapse:collapse;font-size:11.5px}
+.tx-table th{background:rgba(37,187,236,.07);color:var(--muted);font-weight:700;font-size:10px;padding:7px 8px;text-align:right;border-bottom:1px solid var(--border)}
+.tx-table td{padding:7px 8px;border-bottom:1px solid rgba(255,255,255,.04);text-align:right;vertical-align:middle}
+.tx-table tr:hover td{background:rgba(255,255,255,.025)}
+.tx-table tr.removed td{opacity:.28;text-decoration:line-through}
+.badge{display:inline-block;font-size:9px;font-weight:800;padding:2px 6px;border-radius:3px}
+.bh{background:rgba(37,187,236,.14);color:var(--cyan);border:1px solid rgba(37,187,236,.28)}
+.bm{background:rgba(218,179,117,.11);color:var(--gold);border:1px solid rgba(218,179,117,.28)}
+.bl{background:rgba(255,255,255,.05);color:var(--muted);border:1px solid rgba(255,255,255,.1)}
+.rm-btn{background:none;border:1px solid rgba(255,80,80,.28);color:rgba(255,120,120,.65);font-size:10px;padding:2px 7px;border-radius:3px;cursor:pointer;font-family:inherit}
+
+/* ANALYSIS */
+.analysis-box{background:rgba(37,187,236,.05);border:1px solid rgba(37,187,236,.18);border-radius:4px;padding:13px;font-size:12.5px;line-height:1.7}
+
+/* LOADER / TOAST */
+.loader{display:inline-block;width:13px;height:13px;border:2px solid rgba(37,187,236,.28);border-top-color:var(--cyan);border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-left:4px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--navy3);border:1px solid var(--cyan);color:var(--text);padding:8px 16px;border-radius:5px;font-size:12px;font-weight:700;z-index:999;opacity:0;transition:.3s;pointer-events:none;white-space:nowrap}
+.toast.show{opacity:1}
+
+/* MODAL */
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:200;display:none;align-items:center;justify-content:center}
+.modal-bg.open{display:flex}
+.modal{background:var(--navy2);border:1px solid var(--border);border-radius:6px;padding:22px;width:520px;max-width:94vw}
+.modal h3{font-size:15px;font-weight:900;color:var(--gold);margin-bottom:13px;display:flex;justify-content:space-between;align-items:center}
+.modal-x{background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer;font-family:inherit}
+.mi-label{font-size:10px;color:var(--muted);font-weight:700;letter-spacing:.07em;margin-bottom:4px;margin-top:10px}
+.mi-inp{width:100%;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:3px;padding:7px 9px;font-size:12px;color:var(--text);direction:ltr;font-family:inherit}
+
+/* EMPTY */
+.empty{text-align:center;padding:60px 24px;color:var(--muted)}
+.empty-icon{font-size:44px;margin-bottom:14px;opacity:.35}
+</style>
+</head>
+<body>
+
+<!-- TOPBAR -->
+<div class="topbar">
+  <img src="data:image/png;base64,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" alt="אור נכסים">
+  <div class="topbar-info">
+    <div class="topbar-title">מערכת CMA</div>
+    <div class="topbar-sub">נתונים השוואתיים לנדל"ן</div>
+  </div>
+  <div class="topbar-right">
+    <div class="status-dot" title="מחובר ל-govmap.gov.il"></div>
+    <span style="font-size:10px;color:var(--muted)">govmap.gov.il</span>
+    <button class="btn-new" onclick="startNew()">+ דוח חדש</button>
+  </div>
+</div>
+
+<!-- LAYOUT -->
+<div class="layout">
+
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+    <!-- FREE TEXT -->
+    <div class="freetext-panel">
+      <div class="freetext-label">
+        ✨ הכנס כאן תיאור נכס <span class="ai-badge">AI</span>
+      </div>
+      <textarea class="freetext-area" id="ftxt" placeholder="לדוגמה: דירה 4 חדרים קומה 3, 95 מ&quot;ר ברחוב הרצל 12 רחובות, יש ממ&quot;ד ומרפסת, חניה אחת..."></textarea>
+      <button class="freetext-btn" id="ftxBtn" onclick="processFreeText()">
+        🔍 נתח ומלא פרטים אוטומטית
+      </button>
+    </div>
+
+    <!-- CHAT -->
+    <div class="chat-area" id="chatArea"></div>
+    <div class="quick-btns" id="qbtns"></div>
+    <div class="chat-input-row">
+      <input class="chat-inp" id="chatInp" placeholder="הכנס כתובת, תיאור נכס, או תשובה לשאלה..." onkeydown="if(event.key==='Enter')sendMsg()">
+      <button class="chat-send" onclick="sendMsg()">שלח</button>
+    </div>
+
+    <!-- API KEY -->
+    <div class="api-area">
+      <div class="api-label">CLAUDE API KEY (לניתוח AI ולטקסט חופשי)</div>
+      <input class="api-inp" id="apiKey" type="password" placeholder="sk-ant-..." oninput="saveKey()">
+    </div>
+  </div>
+
+  <!-- MAIN -->
+  <div class="main" id="main">
+    <div class="empty" id="emptyState">
+      <div class="empty-icon">🏠</div>
+      <h3 style="color:var(--text);font-size:15px;font-weight:800;margin-bottom:6px">ברוך הבא למערכת CMA</h3>
+      <p style="font-size:12px;line-height:1.7">לחץ <b style="color:var(--cyan)">+ דוח חדש</b> להתחיל<br>הכנס טקסט חופשי או ענה על שאלות</p>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- PRICE MODAL -->
+<div class="modal-bg" id="pmodal">
+  <div class="modal">
+    <h3>עריכת מחיר <button class="modal-x" onclick="closeModal('pmodal')">✕</button></h3>
+    <div class="mi-label">מחיר מהיר (₪)</div>
+    <input class="mi-inp" id="mFast" type="number" step="10000">
+    <div class="mi-label">מחיר ריאלי (₪) ★</div>
+    <input class="mi-inp" id="mReal" type="number" step="10000">
+    <div class="mi-label">מחיר תקרה (₪)</div>
+    <input class="mi-inp" id="mCeil" type="number" step="10000">
+    <div style="display:flex;gap:7px;margin-top:16px">
+      <button class="btn btn-cyan" onclick="savePrice()">שמור</button>
+      <button class="btn btn-outline" onclick="closeModal('pmodal')">ביטול</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══ STATE ═══════════════════════════════════════════
+const S = {
+  id: null, property: {}, transactions: null,
+  pricing: null, analysis: null, step: 0, status: 'idle'
+};
+
+const GOVMAP = 'https://www.govmap.gov.il/api';
+
+const QUESTIONS = [
+  {key:'city',         q:'באיזה <b>יישוב</b> נמצא הנכס?',     opts:null},
+  {key:'neighborhood', q:'<b>שכונה</b>? (אפשר לדלג)',           opts:null},
+  {key:'street',       q:'שם <b>הרחוב</b>?',                   opts:null},
+  {key:'houseNumber',  q:'<b>מספר הבית</b>?',                  opts:null},
+  {key:'type',         q:'<b>סוג הנכס</b>?',                   opts:['דירה','בית פרטי','פנטהאוז','דופלקס','מגרש']},
+  {key:'floor',        q:'<b>קומה</b>?',                       opts:null},
+  {key:'rooms',        q:'כמה <b>חדרים</b>?',                  opts:null},
+  {key:'area',         q:'<b>שטח</b> מ"ר?',                    opts:null},
+  {key:'parking',      q:'<b>חניות</b>? (אפשר לדלג)',          opts:null},
+  {key:'safeRoom',     q:'יש <b>ממ"ד</b>?',                    opts:['כן','לא','לא ידוע']},
+  {key:'balcony',      q:'יש <b>מרפסת</b>?',                   opts:['כן','לא','לא ידוע']},
+  {key:'balconySize',  q:'<b>גודל המרפסת</b> במ"ר? (אפשר לדלג)',opts:null},
+  {key:'storage',      q:'יש <b>מחסן</b>? (אפשר לדלג)',        opts:['כן','לא']},
+  {key:'notes',        q:'<b>הערות</b> נוספות? (אפשר לדלג)',   opts:null},
+];
+
+const LABELS = {city:'יישוב',neighborhood:'שכונה',street:'רחוב',houseNumber:'מס׳ בית',
+  type:'סוג',floor:'קומה',rooms:'חדרים',area:'שטח מ"ר',parking:'חניות',
+  safeRoom:'ממ"ד',balcony:'מרפסת',balconySize:'גודל מרפסת',storage:'מחסן',notes:'הערות'};
+
+// ═══ INIT ════════════════════════════════════════════
+window.addEventListener('DOMContentLoaded', () => {
+  const saved = localStorage.getItem('cma_key');
+  if (saved) document.getElementById('apiKey').value = saved;
+  addBubble('bot', 'שלום! מערכת CMA של <b>אור נכסים</b>.<br>לחץ <b>+ דוח חדש</b> או הכנס טקסט חופשי.')
+  // Global click delegation - survives all DOM re-renders
+  document.addEventListener('click', function(e) {
+    const qbtn = e.target.closest('.qbtn[data-idx]');
+    if (qbtn) {
+      const i = parseInt(qbtn.dataset.idx);
+      const b = window._qbtns || [];
+      if (b[i]) handleQ(b[i].a);
+      return;
+    }
+    if (e.target.id === 'missCompleteBtn') { completeMissing(); return; }
+    if (e.target.classList.contains('rm-btn')) {
+      removeTx(e.target.dataset.scope, parseInt(e.target.dataset.idx));
+      return;
+    }
+  });
+});
+
+function saveKey() {
+  localStorage.setItem('cma_key', document.getElementById('apiKey').value);
+}
+
+function getKey() {
+  return document.getElementById('apiKey').value.trim();
+}
+
+// ═══ REPORT START ═════════════════════════════════════
+function startNew() {
+  initReport();
+  addBubble('bot', 'דוח חדש נפתח!<br>הכנס <b>טקסט חופשי</b> למעלה, או ענה על שאלות:');
+  setTimeout(nextQ, 500);
+}
+
+function initReport() {
+  // Silent init - no chat, no questions. Used by freetext flow.
+  S.id = Math.random().toString(36).slice(2, 10);
+  S.property = {}; S.transactions = null; S.pricing = null;
+  S.analysis = null; S.envAnalysis = null; S.envBoost = 0;
+  S.step = QUESTIONS.length; // Start at end - no questions by default
+  S.status = 'collecting';
+  clearChat();
+  renderReport();
+}
+
+// ═══ FREE TEXT ════════════════════════════════════════
+async function processFreeTextWithInput(text) {
+  // Route bottom-input text to processFreeText
+  const ftxt = document.getElementById('ftxt');
+  if (ftxt) ftxt.value = text;
+  await processFreeText();
+}
+
+
+function parseAddressManually(text) {
+  // Manual Hebrew address parser - no AI needed
+  const result = {};
+  
+  // City - look for known city patterns
+  const cities = ['תל אביב','ירושלים','חיפה','ראשון לציון','פתח תקווה','אשדוד','נתניה','באר שבע','בני ברק','רמת גן','רחובות','רעננה','כפר סבא','הרצליה','חולון','בת ים','אשקלון','נס ציונה','יבנה','לוד','רמלה','מודיעין','אלעד','גבעתיים','קריית גת','הוד השרון','טבריה','נצרת','עפולה','קריית אתא'];
+  for (const city of cities) {
+    if (text.includes(city)) { result.city = city; break; }
+  }
+  
+  // Street number: look for "רחוב X Y" or "X Y" pattern
+  const streetMatch = text.match(/רחוב\s+([\u05D0-\u05EA\s]+?)\s+(\d+)/);
+  if (streetMatch) {
+    result.street = streetMatch[1].trim();
+    result.houseNumber = streetMatch[2];
+  } else {
+    // Try "ברחוב X"
+    const m2 = text.match(/ברחוב\s+([\u05D0-\u05EA\s]+?)(?:\s+(\d+))?/);
+    if (m2) { result.street = m2[1].trim(); if (m2[2]) result.houseNumber = m2[2]; }
+  }
+  
+  // Rooms
+  const roomsMatch = text.match(/(\d+(?:\.5)?)\s*חד/);
+  if (roomsMatch) result.rooms = roomsMatch[1];
+  
+  // Floor - store just the number
+  const floorMatch = text.match(/קומה\s*(\d+)/);
+  if (floorMatch) result.floor = floorMatch[1]; // Just the number
+  
+  // Area
+  const areaMatch = text.match(/(\d+)\s*מ[""׳]ר/);
+  if (areaMatch) result.area = areaMatch[1];
+  
+  // Neighborhood
+  const nbMatch = text.match(/שכונת?\s+([\u05D0-\u05EA\s]+?)(?:\s+רחוב|\s+ב|,|$)/);
+  if (nbMatch) result.neighborhood = nbMatch[1].trim();
+  
+  // Type
+  if (text.includes('פנטהאוז')) result.type = 'פנטהאוז';
+  else if (text.includes('דופלקס')) result.type = 'דופלקס';
+  else if (text.includes('בית פרטי') || text.includes('קוטג')) result.type = 'בית פרטי';
+  else if (text.includes('דירה') || text.includes('חד')) result.type = 'דירה';
+  
+  // Parking
+  const parkMatch = text.match(/(\d+)\s*חניה|חניה\s*(\d+)/);
+  if (parkMatch) result.parking = parkMatch[1] || parkMatch[2];
+  else if (text.includes('חניה')) result.parking = '1';
+  
+  // safeRoom
+  if (text.includes('ממ"ד') || text.includes('ממד')) result.safeRoom = 'כן';
+  
+  // Balcony
+  if (text.includes('מרפסת')) result.balcony = 'כן';
+  
+  return result;
+}
+
+async function processFreeText() {
+  const text = document.getElementById('ftxt').value.trim();
+  if (!text) return toast('הכנס תיאור נכס');
+  const key = getKey();
+  
+  if (!S.id) { initReport(); await new Promise(r => setTimeout(r, 50)); }
+  
+  // If no API key - use manual parser
+  if (!key) {
+    addBubble('user', text.length > 120 ? text.slice(0,120)+'...' : text);
+    const extracted = parseAddressManually(text);
+    const filled = [], missing = [];
+    for (const [k,v] of Object.entries(extracted)) {
+      if (v) { S.property[k] = v; if(LABELS[k]) filled.push(LABELS[k]+': '+v); }
+    }
+    if (!filled.length) {
+      addBubble('bot', '⚠️ לא הצלחתי לזהות פרטים. נסה: "דירה 4 חדרים קומה 3 רחוב הרצל 12 רחובות"<br>או הכנס <b>Claude API Key</b> לניתוח חכם יותר.');
+      S.step = 0;
+      nextQ();
+      return;
+    }
+    addBubble('bot', '✅ זיהיתי (ללא AI):<br>'+filled.join('<br>'), 'extract');
+    document.getElementById('ftxt').value = '';
+    const required = ['city','street'];
+    for (const f of required) if (!S.property[f]) missing.push({key:f, label:LABELS[f]});
+    const optFields = ['rooms','area','floor','type'];
+    const missingOpt = optFields.filter(f => !S.property[f]);
+    if (missingOpt.length >= 2) missingOpt.forEach(f => missing.push({key:f, label:LABELS[f]}));
+    renderReport();
+    if (missing.length) { showMissing(missing); addBubble('bot', 'חסרים '+missing.length+' שדות:'); }
+    else { S.step = QUESTIONS.length; addBubble('bot','✅ לחץ <b>🔍 חפש עסקאות</b>!'); setQbtns([{l:'🔍 חפש עסקאות',a:'gen'}]); }
+    return;
+  }
+  const btn = document.getElementById('ftxBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="loader"></span> מנתח...';
+  addBubble('user', text.length > 120 ? text.slice(0, 120) + '...' : text);
+
+  try {
+    const prompt = `חלץ פרטי נכס נדל"ן בישראל מהטקסט הבא. החזר JSON בלבד ללא הסברים:
+{"city":null,"neighborhood":null,"street":null,"houseNumber":null,"type":null,"floor":null,"rooms":null,"area":null,"parking":null,"safeRoom":null,"balcony":null,"balconySize":null,"storage":null,"notes":null}
+אם פרט לא מופיע – null. type: דירה/בית פרטי/פנטהאוז/דופלקס/מגרש. safeRoom/balcony/storage: כן/לא/לא ידוע. balconySize: גודל המרפסת במ"ר אם צוין (מספר בלבד).
+טקסט: ${text}`;
+
+    const resp = await callClaude(prompt, 400);
+    const jm = resp.match(/\{[\s\S]+\}/);
+    if (!jm) throw new Error('לא הצלחתי לחלץ');
+    const ex = JSON.parse(jm[0]);
+
+    // Apply extracted values
+    const filled = [], missing = [];
+    for (const [k, v] of Object.entries(ex)) {
+      if (v && v !== 'null') {
+        S.property[k] = v;
+        if (LABELS[k]) filled.push(LABELS[k] + ': ' + v);
+      }
+    }
+
+    // Show extracted
+    if (filled.length) {
+      addBubble('bot', '✅ <b>חולץ:</b><br>' + filled.join('<br>'), 'extract');
+    }
+
+    // Find missing important fields
+    const required = ['city', 'street'];
+    const optFields = ['rooms', 'area', 'floor', 'type'];
+    for (const f of required) {
+      if (!S.property[f]) missing.push({key: f, label: LABELS[f]});
+    }
+    // Only ask optional fields if 2+ are missing
+    const missingOpt = optFields.filter(f => !S.property[f]);
+    if (missingOpt.length >= 2) missingOpt.forEach(f => missing.push({key: f, label: LABELS[f]}));
+
+    renderReport();
+    document.getElementById('ftxt').value = '';
+
+    if (missing.length) {
+      showMissing(missing);
+      addBubble('bot', `חסרים <b>${missing.length}</b> שדות חשובים – השלם אותם:`);
+    } else {
+      S.step = QUESTIONS.length;
+      addBubble('bot', '✅ כל הפרטים מולאו! לחץ <b>🔍 חפש עסקאות</b>.');
+      setQbtns([{l:'🔍 חפש עסקאות', a:'gen'}]);
+    }
+  } catch(e) {
+    addBubble('bot', '❌ ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '🔍 נתח ומלא פרטים אוטומטית';
+  }
+}
+
+function showMissing(fields) {
+  // Remove existing
+  document.querySelector('.missing-section')?.remove();
+  let html = '<div class="missing-section"><div class="missing-title">📝 השלם פרטים חסרים</div>';
+  for (const f of fields) {
+    html += `<div class="miss-row"><label class="miss-label">${f.label}:</label>
+      <input class="miss-inp" id="ms_${f.key}" placeholder="${f.label}...">
+    </div>`;
+  }
+  html += '<button class="miss-complete" id="missCompleteBtn">✅ עדכן והמשך</button></div>';
+  const main = document.getElementById('main');
+  const firstChild = main.firstChild;
+  const tmp = document.createElement('div');
+  tmp.innerHTML = html;
+  const banner = tmp.firstChild;
+  main.insertBefore(banner, firstChild);
+  window._missingKeys = fields.map(f => f.key);
+  // Add event listeners after DOM insertion
+  // Use data attribute + global delegation (survives re-renders)
+  window._missingKeys = fields.map(f => f.key);
+}
+
+function completeMissing() {
+  for (const k of (window._missingKeys || [])) {
+    const el = document.getElementById('ms_' + k);
+    if (el && el.value.trim()) S.property[k] = el.value.trim();
+  }
+  document.querySelector('.missing-section')?.remove();
+  renderReport();
+  // Skip questions for all already-filled fields
+  S.step = QUESTIONS.length;
+  addBubble('bot', '✅ פרטים עודכנו! לחץ <b>🔍 חפש עסקאות</b>.');
+  setQbtns([{l:'🔍 חפש עסקאות', a:'gen'}]);
+  toast('פרטים עודכנו');
+}
+
+// ═══ CHAT FLOW ════════════════════════════════════════
+function clearChat() {
+  document.getElementById('chatArea').innerHTML = '';
+  document.getElementById('qbtns').innerHTML = '';
+}
+
+function addBubble(who, html, cls='') {
+  const el = document.createElement('div');
+  el.className = 'bubble ' + who + (cls ? ' ' + cls : '');
+  el.innerHTML = html;
+  const area = document.getElementById('chatArea');
+  area.appendChild(el);
+  el.scrollIntoView({behavior:'smooth'});
+}
+
+function nextQ() {
+  // Skip all questions for fields already filled (from free text or previous answers)
+  while (S.step < QUESTIONS.length && S.property[QUESTIONS[S.step].key]) {
+    S.step++;
+  }
+  if (S.step >= QUESTIONS.length) {
+    // All done - check if we have minimum required
+    if (S.property.city && S.property.street) {
+      addBubble('bot', '✅ כל הפרטים הוכנסו! לחץ <b>חפש עסקאות</b>.');
+      setQbtns([{l:'🔍 חפש עסקאות', a:'gen'}]);
+    } else {
+      addBubble('bot', 'חסרים <b>יישוב</b> ו<b>רחוב</b>. הכנס אותם:');
+      S.step = 0; // restart from city
+      askNextMissing();
+    }
+    return;
+  }
+  const q = QUESTIONS[S.step];
+  addBubble('bot', q.q);
+  if (q.opts) setQbtns([...q.opts.map(o => ({l:o, a:'ans:'+o})), {l:'דלג', a:'skip'}]);
+  else setQbtns([{l:'דלג', a:'skip'}]);
+  setTimeout(() => document.getElementById('chatInp').focus(), 60);
+}
+
+function askNextMissing() {
+  // Find next truly missing field
+  while (S.step < QUESTIONS.length && S.property[QUESTIONS[S.step].key]) S.step++;
+  if (S.step >= QUESTIONS.length) {
+    addBubble('bot', '✅ כל הפרטים! לחץ <b>חפש עסקאות</b>.');
+    setQbtns([{l:'🔍 חפש עסקאות', a:'gen'}]);
+    return;
+  }
+  const q = QUESTIONS[S.step];
+  addBubble('bot', q.q);
+  if (q.opts) setQbtns([...q.opts.map(o => ({l:o, a:'ans:'+o})), {l:'דלג', a:'skip'}]);
+  else setQbtns([{l:'דלג', a:'skip'}]);
+}
+
+function setQbtns(btns) {
+  window._qbtns = btns; // Store globally
+  const container = document.getElementById('qbtns');
+  container.innerHTML = '';
+  btns.forEach((b, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'qbtn';
+    btn.textContent = b.l;
+    btn.dataset.idx = String(i);
+    container.appendChild(btn);
+  });
+}
+
+
+
+function handleQ(a) {
+  if (a === 'skip') { S.step++; nextQ(); }
+  else if (a === 'gen') generateReport();
+  else if (a === 'analyze') analyzeReport();
+  else if (a === 'pdf') exportPDF();
+  else if (a.startsWith('ans:')) {
+    const v = a.slice(4);
+    addBubble('user', v);
+    S.property[QUESTIONS[S.step].key] = v;
+    S.step++;
+    renderReport();
+    setTimeout(nextQ, 250);
+  }
+}
+
+function sendMsg() {
+  const inp = document.getElementById('chatInp');
+  const v = inp.value.trim();
+  if (!v) return;
+  inp.value = '';
+
+  // No active report? treat as free text
+  if (!S.id) {
+    const ftxt = document.getElementById('ftxt');
+    if (ftxt) ftxt.value = v;
+    addBubble('user', v);
+    addBubble('bot', 'מנסה לנתח כטקסט חופשי...');
+    // Trigger free text processing with this input
+    processFreeTextWithInput(v);
+    return;
+  }
+
+  // Still collecting answers to questions
+  if (S.step < QUESTIONS.length) {
+    addBubble('user', v);
+    S.property[QUESTIONS[S.step].key] = v;
+    S.step++;
+    renderReport();
+    setTimeout(nextQ, 250);
+    return;
+  }
+
+  // Report exists and all questions done
+  addBubble('user', v);
+  const lower = v.toLowerCase();
+  if (lower.includes('חפש') || lower.includes('עסקא')) {
+    generateReport();
+  } else if (lower.includes('ניתוח') || lower.includes('ai')) {
+    analyzeReport();
+  } else {
+    addBubble('bot', 'לחץ <b>🔍 חפש עסקאות</b> להמשיך.');
+    setQbtns([{l:'🔍 חפש עסקאות', a:'gen'}]);
+  }
+}
+
+// ═══ GOVMAP API ═══════════════════════════════════════
+function parsePoint(shape) {
+  if (!shape) return null;
+  const m = shape.match(/POINT\(([0-9.]+)\s+([0-9.]+)\)/);
+  return m ? [parseFloat(m[1]), parseFloat(m[2])] : null;
+}
+
+async function govPost(path, body) {
+  const r = await fetch(GOVMAP + path, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Referer': 'https://www.govmap.gov.il/',
+      'Origin': 'https://www.govmap.gov.il'
+    },
+    body: JSON.stringify(body)
+  });
+  return r.json();
+}
+
+async function govGet(path) {
+  const r = await fetch(GOVMAP + path, {
+    headers: {'Referer': 'https://www.govmap.gov.il/'}
+  });
+  return r.json();
+}
+
+function normDeal(d, scope) {
+  // Exact field names from nadlan-mcp models.py Deal class aliases:
+  // dealAmount, dealDate, assetArea, assetRoomNum, settlementNameHeb,
+  // streetName, houseNumber, floorNumber, neighborhood
+  const price  = d.dealAmount || 0;
+  const area   = d.assetArea || null;
+  const rooms  = d.assetRoomNum !== undefined ? d.assetRoomNum : null;
+  const floor  = d.floorNumber !== null && d.floorNumber !== undefined ? d.floorNumber :
+                 (d.floor ? (parseInt(d.floor) || null) : null);
+  const city   = d.settlementNameHeb || d.cityName || '';
+  const stName = d.streetName || d.streetNameHeb || '';
+  const houseN = String(d.houseNumber || d.houseNum || '');
+  const addr   = (stName + (houseN ? ' ' + houseN : '')).trim();
+  const date   = d.dealDate ? String(d.dealDate).slice(0,10) : '';
+  
+  if (!window._nl) {
+    window._nl = true;
+    console.log('[normDeal] KEYS:', Object.keys(d).join(', '));
+    console.log('[normDeal] price=' + price + ' area=' + area + ' rooms=' + rooms + ' floor=' + floor + ' date=' + date + ' addr=' + addr);
+  }
+  return { address: addr, houseNumber: houseN, floor, rooms, area, price,
+    pricePerSqm: (area && area > 0) ? Math.round(price / area) : null,
+    date, neighborhood: d.neighborhood || '', city, scope, removed: false };
+}
+
+async function fetchTx(city, street, houseNumber) {
+  // Step 1: Autocomplete - get ITM coordinates
+  const searchText = street + ' ' + (houseNumber || '1') + ' ' + city;
+  const fallbackText = street + ' ' + city;
+  
+  let acResults = [];
+  for (const query of [searchText, fallbackText]) {
+    try {
+      const ac = await govPost('/search-service/autocomplete', {
+        searchText: query, language: 'he', isAccurate: false, maxResults: 10
+      });
+      acResults = ac.results || [];
+      if (acResults.length) break;
+    } catch(e) { console.log('[ac] error:', e.message); }
+  }
+  if (!acResults.length) throw new Error('כתובת לא נמצאה: ' + searchText);
+  console.log('[ac] found', acResults.length, 'results');
+  console.log('[ac] first:', JSON.stringify(acResults[0]).slice(0,200));
+
+  // Step 2: Try top-3 autocomplete results to find polygons (like nadlan-mcp)
+  let point = null, polygons = [];
+  const radii = [50, 200, 500, 1000, 2000];
+  
+  for (const result of acResults.slice(0, 3)) {
+    const p = parsePoint(result.shape);
+    if (!p) continue;
+    
+    for (const r of radii) {
+      try {
+        const raw = await govGet('/real-estate/deals/' + p[0] + ',' + p[1] + '/' + r);
+        console.log('[deals r=' + r + '] raw type:', typeof raw, Array.isArray(raw) ? 'len='+raw.length : JSON.stringify(raw).slice(0,100));
+        const arr = Array.isArray(raw) ? raw : (raw && typeof raw === 'object' ? Object.values(raw) : []);
+        if (arr.length > 0) {
+          point = p; polygons = arr;
+          console.log('[deals] found', arr.length, 'polygons at r='+r, 'result:', result.text);
+          console.log('[deals] first polygon:', JSON.stringify(arr[0]).slice(0,300));
+          break;
+        }
+      } catch(e) { console.log('[deals r='+r+'] err:', e.message); }
+    }
+    if (polygons.length) break;
+  }
+  
+  if (!point) {
+    // Use first result even with no polygons - will show empty transactions
+    point = parsePoint(acResults[0].shape);
+    if (!point) throw new Error('לא נמצאו קואורדינטות לכתובת');
+    console.log('[fallback] using point without polygons');
+  }
+  console.log('[point] x=' + point[0].toFixed(0) + ' y=' + point[1].toFixed(0) + ' polygons=' + polygons.length);
+
+  // Step 3: Date range
+  const now = new Date();
+  const startDate = (now.getFullYear()-2) + '-' + String(now.getMonth()+1).padStart(2,'0');
+  const endDate = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
+
+  let bDeals = [], sDeals = [], nDeals = [];
+
+  if (polygons.length > 0) {
+    // Extract polygon_id from first polygon - try all possible field names
+    const poly0 = polygons[0];
+    console.log('[polygon] keys:', Object.keys(poly0).join(', '));
+    const polyId = String(
+      poly0.polygon_id || poly0.polygonId || poly0.POLYGON_ID ||
+      poly0.id || poly0.ID || poly0.objectid || poly0.OBJECTID || ''
+    ).trim();
+    console.log('[polygon] id=', polyId);
+
+    if (polyId) {
+      // Get street deals
+      try {
+        const sd = await govGet('/real-estate/street-deals/' + polyId +
+          '?startDate=' + startDate + '&endDate=' + endDate + '&limit=30&dealType=2');
+        console.log('[street-deals] type:', typeof sd, 'keys:', sd && typeof sd === 'object' ? Object.keys(sd).join(',') : '');
+        const sdArr = Array.isArray(sd) ? sd : (sd && sd.data ? sd.data : (sd && Array.isArray(sd.deals) ? sd.deals : []));
+        console.log('[street-deals] count:', sdArr.length);
+        if (sdArr.length > 0) {
+          console.log('[street-deals] first deal:', JSON.stringify(sdArr[0]).slice(0,300));
+        }
+        sdArr.forEach(d => {
+          const hn = String(d.houseNumber || d.houseNum || '');
+          if (houseNumber && hn === String(houseNumber)) bDeals.push(d);
+          else sDeals.push(d);
+        });
+        bDeals = bDeals.slice(0,5);
+        sDeals = sDeals.slice(0,8);
+      } catch(e) { console.log('[street-deals] err:', e.message); }
+
+      // Get neighborhood deals
+      try {
+        const nd = await govGet('/real-estate/neighborhood-deals/' + polyId +
+          '?startDate=' + startDate + '&endDate=' + endDate + '&limit=20&dealType=2');
+        const ndArr = Array.isArray(nd) ? nd : (nd && nd.data ? nd.data : []);
+        nDeals = ndArr.filter(d => !(d.streetName || d.streetNameHeb || '').includes(street)).slice(0,8);
+      } catch(e) { console.log('[nb-deals] err:', e.message); }
+    }
+  }
+
+  return {
+    building: bDeals.map(d => normDeal(d, 'building')),
+    street: sDeals.map(d => normDeal(d, 'street')),
+    neighborhood: nDeals.map(d => normDeal(d, 'neighborhood')),
+    meta: { point, polygons: polygons.length, source: 'govmap.gov.il', fetchedAt: new Date().toISOString() }
+  };
+}
+
+function calcPricing(tx) {
+  const all = [...(tx.building||[]),...(tx.street||[])].filter(t => t.price>0 && !t.removed);
+  const prices = all.map(t=>t.price).sort((a,b)=>a-b);
+  const med = prices.length ? prices[Math.floor(prices.length/2)] : 0;
+  return {
+    fast: med ? Math.round(med*.92/10000)*10000 : 0,
+    real: med ? Math.round(med*.97/10000)*10000 : 0,
+    ceil: med ? Math.round(med*1.05/10000)*10000 : 0,
+    count: prices.length, median: med
+  };
+}
+
+// ═══ GENERATE ════════════════════════════════════════
+async function generateReport() {
+  const p = S.property;
+  if (!p.city || !p.street) return toast('נדרש יישוב ורחוב');
+  addBubble('bot', '<span class="loader"></span> מחפש עסקאות ב-govmap.gov.il...');
+  try {
+    const tx = await fetchTx(p.city, p.street, p.houseNumber||'');
+    S.transactions = tx;
+    S.pricing = calcPricing(tx);
+    S.status = 'generated';
+    renderReport();
+    const total = (tx.building?.length||0) + (tx.street?.length||0) + (tx.neighborhood?.length||0);
+    const meta = tx.meta || {};
+    addBubble('bot', '✅ נמצאו <b>' + total + ' עסקאות</b>' + (meta.polygons !== undefined ? ' (' + meta.polygons + ' polygons)' : '') + (total === 0 ? ' – פתח F12 Console לאבחון' : '!'));
+    setQbtns([{l:'🤖 ניתוח AI', a:'analyze'}, {l:'📄 הפק PDF', a:'pdf'}]);
+  } catch(e) {
+    addBubble('bot', '❌ שגיאה: ' + e.message);
+  }
+}
+
+// ═══ AI ANALYZE ══════════════════════════════════════
+async function analyzeReport() {
+  const key = getKey();
+  if (!key) return toast('נדרש Claude API Key');
+  if (!S.transactions) return toast('חפש עסקאות קודם');
+
+  addBubble('bot', '<span class="loader"></span> שלב 1/2: מחפש נתונים סביבתיים...');
+
+  try {
+    const all = [...(S.transactions.building||[]),...(S.transactions.street||[])].filter(t=>t.price>0&&!t.removed);
+    const p = S.property;
+    const addr = [p.street, p.houseNumber, p.city].filter(Boolean).join(' ');
+
+    // ── STEP 1: Environmental data with web_search tool (multi-turn) ──
+    let envAnalysis = '';
+    let envBoost = 0;
+    try {
+      const envResult = await callClaudeWithWebSearch(
+        `אתה מומחה נדל"ן ישראלי. חפש מידע עדכני על הסביבה: ${addr}
+חפש:
+1. פרויקטי התחדשות עירונית (תמ"א 38, פינוי-בינוי) קרובים
+2. תחנות מטרו/רכבת קלה מתוכננות
+3. פיתוח תשתיות ושינויי תב"ע
+
+ענה בעברית:
+**נתונים סביבתיים:**
+• [פריט 1]
+• [פריט 2]
+**השפעה על מחיר:** [קצר]
+JSON:{"env_boost":NUMBER_-10_TO_10}`,
+        700, key
+      );
+      envAnalysis = envResult.text || '';
+      const jm = envAnalysis.match(/JSON:\s*(\{[^{}]+\})/);
+      if (jm) {
+        try { envBoost = JSON.parse(jm[1]).env_boost || 0; } catch(_) {}
+        envAnalysis = envAnalysis.replace(/JSON:\s*\{[^{}]+\}/, '').trim();
+      }
+    } catch(e) {
+      console.log('[env search] failed:', e.message);
+      envAnalysis = 'לא הצלחתי לאחזר נתונים סביבתיים כרגע.';
+    }
+
+    // ── STEP 2: Main valuation analysis ──
+    const chatArea = document.getElementById('chatArea');
+    const lastBubble = chatArea.lastChild;
+    if (lastBubble) lastBubble.innerHTML = '<span class="loader"></span> שלב 2/2: מנתח שווי...';
+
+    const txStr = all.slice(0,6).map(t =>
+      (t.address||'')+', ק'+(t.floor!=null?t.floor:'?')+', '+(t.rooms||'?')+'חד, '+(t.area||'?')+'מ"ר: ₪'+t.price.toLocaleString()+' ('+(t.date||'')+')'
+    ).join('\n');
+
+    const mainPrompt = `שמאי מקרקעין ישראלי מקצועי. נתח ב-3-4 משפטים קצרים:
+נכס: ${p.type||'דירה'} ${p.rooms||'?'} חד, ${p.area||'?'}מ"ר, ק${p.floor||'?'}, ${addr}
+עסקאות (govmap.gov.il):
+${txStr || 'אין עסקאות'}
+נתונים סביבתיים: ${envAnalysis.slice(0,400)}
+סיים עם: JSON:{"fast":NUMBER,"real":NUMBER,"ceil":NUMBER}`;
+
+    const mainText = await callClaude(mainPrompt, 500);
+    const jm2 = mainText.match(/JSON:\s*(\{[^{}]+\})/);
+    S.analysis = mainText.replace(/JSON:\s*\{[^{}]+\}/, '').trim();
+    S.envAnalysis = envAnalysis;
+    S.envBoost = envBoost;
+
+    if (jm2) {
+      try {
+        const prices = JSON.parse(jm2[1]);
+        if (Math.abs(envBoost) >= 2) {
+          const f = 1 + (envBoost / 100);
+          prices.fast  = Math.round((prices.fast  || 0) * f / 10000) * 10000;
+          prices.real  = Math.round((prices.real  || 0) * f / 10000) * 10000;
+          prices.ceil  = Math.round((prices.ceil  || 0) * f / 10000) * 10000;
+        }
+        S.pricing = {...(S.pricing||{}), ...prices};
+      } catch(_) {}
+    }
+
+    renderReport();
+    const boostMsg = Math.abs(envBoost) >= 2
+      ? ' | השפעת סביבה: ' + (envBoost > 0 ? '+' : '') + envBoost + '%'
+      : '';
+    addBubble('bot', '✅ ניתוח הושלם!' + boostMsg);
+    setQbtns([{l:'📄 הפק PDF', a:'pdf'}]);
+
+  } catch(e) {
+    addBubble('bot', '❌ שגיאה: ' + e.message);
+    console.error('[analyzeReport]', e);
+  }
+}
+
+async function callClaudeWithWebSearch(prompt, maxTokens, key) {
+  // Full multi-turn loop to handle web_search tool use
+  const messages = [{role: 'user', content: prompt}];
+  let finalText = '';
+  let iterations = 0;
+
+  while (iterations < 5) {
+    iterations++;
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': key,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: maxTokens,
+        tools: [{type: 'web_search_20250305', name: 'web_search'}],
+        messages: messages
+      })
+    });
+    const d = await r.json();
+    if (d.error) throw new Error(d.error.message || 'Claude error');
+
+    // Collect any text from this response
+    const textBlocks = (d.content || []).filter(b => b.type === 'text');
+    if (textBlocks.length) finalText += textBlocks.map(b => b.text).join('\n');
+
+    // If stopped normally, we're done
+    if (d.stop_reason === 'end_turn' || d.stop_reason === 'max_tokens') break;
+
+    // If Claude wants to use tools, send tool results back
+    if (d.stop_reason === 'tool_use') {
+      const toolUseBlocks = (d.content || []).filter(b => b.type === 'tool_use');
+      if (!toolUseBlocks.length) break;
+
+      // Add assistant response to messages
+      messages.push({role: 'assistant', content: d.content});
+
+      // Build tool results
+      const toolResults = toolUseBlocks.map(tb => ({
+        type: 'tool_result',
+        tool_use_id: tb.id,
+        content: tb.input ? JSON.stringify(tb.input) : 'Search completed'
+      }));
+      messages.push({role: 'user', content: toolResults});
+    } else {
+      break;
+    }
+  }
+
+  return {text: finalText};
+}
+
+async function callClaude(prompt, maxTokens=500) {
+  const key = getKey();
+  const r = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01'},
+    body: JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:maxTokens,messages:[{role:'user',content:prompt}]})
+  });
+  const d = await r.json();
+  if (d.error) throw new Error(d.error.message || 'Claude error');
+  return d.content?.[0]?.text || '';
+}
+
+// ═══ REMOVE TX ════════════════════════════════════════
+function removeTx(scope, idx) {
+  if (!confirm('להסיר עסקה זו?')) return;
+  S.transactions[scope][idx].removed = true;
+  S.pricing = calcPricing(S.transactions);
+  renderReport();
+  toast('עסקה הוסרה');
+}
+
+// ═══ EDIT PRICE ══════════════════════════════════════
+function editPrice() {
+  const p = S.pricing || {};
+  document.getElementById('mFast').value = p.fast || '';
+  document.getElementById('mReal').value = p.real || '';
+  document.getElementById('mCeil').value = p.ceil || '';
+  document.getElementById('pmodal').classList.add('open');
+}
+
+function savePrice() {
+  S.pricing = {
+    ...S.pricing,
+    fast: parseInt(document.getElementById('mFast').value) || 0,
+    real: parseInt(document.getElementById('mReal').value) || 0,
+    ceil: parseInt(document.getElementById('mCeil').value) || 0,
+    userOverride: true
+  };
+  closeModal('pmodal');
+  renderReport();
+  toast('מחיר עודכן');
+}
+
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+// ═══ RENDER ══════════════════════════════════════════
+function renderReport() {
+  const main = document.getElementById('main');
+  const banner = main.querySelector('.missing-section');
+  if (!S.id) return;
+
+  const p = S.property;
+  const tx = S.transactions;
+  const pr = S.pricing || {};
+  const fmt = n => n ? '₪'+Number(n).toLocaleString('he-IL') : '–';
+  const addr = [p.street, p.houseNumber, p.city].filter(Boolean).join(' ');
+
+  let h = '<div style="position:relative">';
+  h += '<div style="position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,#25bbec,#dab375)"></div>';
+
+  // Header
+  h += '<div class="rpt-header">';
+  h += '<div><div class="rpt-title">נתונים השוואתיים לקראת מכירה</div>';
+  if (addr) h += '<div class="rpt-addr">' + addr + '</div>';
+  h += '</div>';
+  h += S.status === 'generated'
+    ? '<span class="status-chip chip-gen"><span class="blink"></span>דוח מוכן</span>'
+    : '<span class="status-chip chip-col"><span class="blink"></span>איסוף נתונים</span>';
+  h += '</div>';
+
+  // Actions
+  h += '<div class="actions-row">';
+  if (S.status === 'generated') {
+    h += '<button class="btn btn-cyan" onclick="analyzeReport()">🤖 ניתוח AI</button>';
+    h += '<button class="btn btn-outline" onclick="editPrice()">✏️ ערוך מחיר</button>';
+    h += '<button class="btn btn-gold" onclick="exportPDF()">📄 הפק PDF</button>';
+  } else {
+    const canGen = !!(p.city && p.street);
+    h += `<button class="btn btn-cyan" onclick="generateReport()" ${canGen?'':'disabled'}>🔍 חפש עסקאות</button>`;
+  }
+  h += '</div>';
+
+  // Property fields
+  const propFields = [
+    {l:'יישוב',v:p.city},{l:'שכונה',v:p.neighborhood},
+    {l:'כתובת',v:[p.street,p.houseNumber].filter(Boolean).join(' ')},
+    {l:'סוג',v:p.type},
+    {l:'קומה',v:p.floor ? 'קומה ' + String(p.floor).replace(/קומה\s*/,'') : null},
+    {l:'חדרים',v:p.rooms},{l:'שטח מ"ר',v:p.area},
+    {l:'חניות',v:p.parking},{l:'ממ"ד',v:p.safeRoom},
+    {l:'מרפסת',v:p.balcony ? p.balcony + (p.balconySize ? ' – ' + p.balconySize + ' מ"ר' : '') : null},
+    {l:'מחסן',v:p.storage}
+  ].filter(f => f.v);
+
+  if (propFields.length) {
+    h += '<div class="section"><div class="s-head"><div class="s-dot"></div><h2>פרטי הנכס</h2></div>';
+    h += '<div class="prop-grid">';
+    propFields.forEach(f => {
+      h += `<div class="prop-box"><div class="l">${f.l}</div><div class="v">${f.v}</div></div>`;
+    });
+    h += '</div></div>';
+  }
+
+  // Price bar
+  if (pr.fast || pr.real || pr.ceil) {
+    h += '<div class="price-bar"><div style="font-size:9px;color:var(--muted);font-weight:700;letter-spacing:.08em;margin-bottom:10px">טווח מכירה ריאלי'+(pr.userOverride?' <span style="color:var(--gold);font-size:9px">✏️ ערוך ידנית</span>':'')+'</div>';
+    h += '<div class="price-row">';
+    h += '<div class="price-col"><div class="pl">מחיר מהיר</div><div class="pv pv-fast">'+fmt(pr.fast)+'</div></div>';
+    h += '<div class="price-sep"></div>';
+    h += '<div class="price-col"><div class="pl">מחיר ריאלי ★</div><div class="pv pv-real">'+fmt(pr.real)+'</div></div>';
+    h += '<div class="price-sep"></div>';
+    h += '<div class="price-col"><div class="pl">מחיר תקרה</div><div class="pv pv-ceil">'+fmt(pr.ceil)+'</div></div>';
+    h += '</div></div>';
+  }
+
+  // Analysis
+  if (S.analysis) {
+    h += '<div class="section"><div class="s-head"><div class="s-dot"></div><h2>ניתוח מקצועי</h2></div>';
+    h += '<div class="analysis-box">'+S.analysis.replace(/\n/g,'<br>')+'</div></div>';
+  }
+  
+  // Environmental data
+  if (S.envAnalysis) {
+    const boostColor = S.envBoost > 2 ? '#22c55e' : S.envBoost < -2 ? '#ef4444' : 'var(--muted)';
+    const boostTxt = Math.abs(S.envBoost) >= 2 ? 
+      ' <span style="color:'+boostColor+';font-weight:800;font-size:11px">' + (S.envBoost>0?'▲+':'▼') + S.envBoost + '% השפעה על מחיר</span>' : '';
+    h += '<div class="section"><div class="s-head"><div class="s-dot" style="background:var(--gold)"></div>';
+    h += '<h2 style="color:var(--gold)">נתונים סביבתיים' + boostTxt + '</h2></div>';
+    h += '<div class="analysis-box" style="background:rgba(218,179,117,.05);border-color:rgba(218,179,117,.2)">';
+    h += S.envAnalysis.replace(/\*\*(.*?)\*\*/g,'<b style="color:var(--gold)">$1</b>').replace(/\n/g,'<br>');
+    h += '</div></div>';
+  }
+
+  // Transactions
+  if (tx) {
+    [['building','עסקאות בניין'],['street','עסקאות רחוב'],['neighborhood','עסקאות שכונה']].forEach(([scope,title]) => {
+      const deals = tx[scope] || [];
+      h += '<div class="section"><div class="s-head"><div class="s-dot"></div><h2>'+title+'</h2>';
+      h += '<span style="font-size:10px;color:var(--muted);margin-right:auto">'+deals.filter(d=>!d.removed).length+' עסקאות</span></div>';
+      if (!deals.length) {
+        h += '<div style="font-size:12px;color:var(--muted);padding:8px">לא נמצאו עסקאות</div>';
+      } else {
+        h += '<div class="tx-wrap"><table class="tx-table"><thead><tr><th>כתובת</th><th>תאריך</th><th>מחיר</th><th>₪/מ"ר</th><th>שטח</th><th>חד׳</th><th>קומה</th><th>התאמה</th><th></th></tr></thead><tbody>';
+        deals.forEach((d, i) => {
+          const m = matchScore(d, p);
+          h += `<tr class="${d.removed?'removed':''}">
+            <td>${d.address||'–'}</td>
+            <td>${d.date?d.date.slice(0,7):'–'}</td>
+            <td style="font-weight:800">${d.price?'₪'+d.price.toLocaleString():'–'}</td>
+            <td>${d.pricePerSqm?'₪'+d.pricePerSqm.toLocaleString():'–'}</td>
+            <td>${d.area||'–'}</td>
+            <td>${d.rooms||'–'}</td>
+            <td>${d.floor!==null&&d.floor!==undefined?d.floor:'–'}</td>
+            <td><span class="badge ${m.cls}">${m.lbl}</span></td>
+            <td>${!d.removed?`<button class="rm-btn" data-scope="${scope}" data-idx="${i}">הסר</button>`:'<span style="font-size:9px;color:var(--muted)">הוסר</span>'}</td>
+          </tr>`;
+        });
+        h += '</tbody></table></div>';
+      }
+      h += '</div>';
+    });
+  }
+
+  if (p.notes) {
+    h += '<div class="section"><div class="s-head"><div class="s-dot"></div><h2>הערות</h2></div>';
+    h += '<div class="analysis-box" style="background:rgba(218,179,117,.05);border-color:rgba(218,179,117,.18)">'+p.notes+'</div></div>';
+  }
+
+  h += '</div>';
+  main.innerHTML = h;
+  if (banner) {
+    const fc = main.firstChild;
+    if (fc) main.insertBefore(banner, fc); else main.appendChild(banner);
+  }
+}
+
+function matchScore(deal, prop) {
+  let s = 0;
+  if (prop.rooms && deal.rooms) { const d=Math.abs(parseFloat(prop.rooms)-parseFloat(deal.rooms)); if(d===0)s+=3;else if(d<=.5)s+=2;else if(d<=1)s+=1; }
+  if (prop.area && deal.area) { const d=Math.abs(parseInt(prop.area)-parseInt(deal.area)); if(d<10)s+=3;else if(d<20)s+=2;else if(d<35)s+=1; }
+  if (prop.floor && deal.floor!=null) { const d=Math.abs(parseInt(prop.floor)-parseInt(deal.floor)); if(d<=1)s+=2;else if(d<=2)s+=1; }
+  return s>=6?{cls:'bh',lbl:'גבוה'}:s>=3?{cls:'bm',lbl:'בינוני'}:{cls:'bl',lbl:'נמוך'};
+}
+
+// ═══ PDF EXPORT ══════════════════════════════════════
+function exportPDF() {
+  if (!S.transactions) return toast('אין עסקאות לייצוא');
+  const p=S.property, tx=S.transactions, pr=S.pricing||{};
+  const fmt=n=>n?'₪'+Number(n).toLocaleString('he-IL'):'–';
+  const logo=document.querySelector('.topbar img').src;
+  const mkRows=deals=>deals.filter(d=>!d.removed).slice(0,7).map(d=>`<tr>
+    <td>${d.address||'–'}</td><td>${d.date?d.date.slice(0,7):'–'}</td>
+    <td style="font-weight:700">${d.price?'₪'+d.price.toLocaleString():'–'}</td>
+    <td>${d.pricePerSqm?'₪'+d.pricePerSqm.toLocaleString():'–'}</td>
+    <td>${d.area||'–'}</td><td>${d.rooms||'–'}</td>
+    <td>${d.floor!=null&&d.floor!=undefined?d.floor:'–'}</td></tr>`).join('');
+
+  const w=window.open('','_blank','width=1000,height=800');
+  w.document.write(`<!DOCTYPE html><html dir="rtl" lang="he"><head>
+  <meta charset="UTF-8">
+  <link href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:"Assistant",sans-serif;direction:rtl;background:#fff;color:#111;padding:28px;font-size:12px}
+  .hdr{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;padding-bottom:14px;border-bottom:3px solid #08212d}
+  .logo img{height:32px}.logo p{font-size:8px;color:#aaa;letter-spacing:.1em;margin-top:2px}
+  h1{font-size:20px;font-weight:900;color:#08212d}
+  .meta{font-size:11px;color:#666;margin-top:4px}
+  h2{font-size:13px;font-weight:800;color:#08212d;margin:16px 0 8px;border-bottom:2px solid #25bbec;padding-bottom:3px}
+  .pgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:16px}
+  .pbox{background:#f5f7f9;border-radius:3px;padding:6px 9px}
+  .pbox .l{font-size:8px;color:#999;font-weight:700;letter-spacing:.06em}
+  .pbox .v{font-size:13px;font-weight:800;color:#08212d}
+  .prices{background:#08212d;border-radius:5px;padding:14px;margin:14px 0;display:flex;justify-content:space-around}
+  .pc{text-align:center}.pc .l{font-size:9px;color:rgba(255,255,255,.5);font-weight:700}
+  .pc .v{font-size:18px;font-weight:900;margin-top:3px}
+  .fast{color:#dab375}.real{color:#25bbec;font-size:22px!important}.ceil{color:#7dd3fc}
+  .sep{width:1px;background:rgba(255,255,255,.12)}
+  table{width:100%;border-collapse:collapse;font-size:11px;margin-bottom:14px}
+  th{background:#08212d;color:#25bbec;padding:6px 8px;text-align:right;font-size:10px}
+  td{padding:6px 8px;border-bottom:1px solid #eee;text-align:right}
+  tr:nth-child(even) td{background:#f9fafc}
+  .analysis{background:#f0f9ff;border:1px solid #25bbec;border-radius:3px;padding:12px;font-size:11.5px;line-height:1.65;color:#1a3a4a}
+  .footer{margin-top:24px;padding-top:10px;border-top:1px solid #ddd;display:flex;justify-content:space-between;font-size:9px;color:#aaa}
+  </style></head><body>
+  <div class="hdr">
+    <div class="logo"><img src="${logo}" alt="אור נכסים"><p>אור נכסים &nbsp;•&nbsp; מבינים את הנכס שלך</p></div>
+    <div style="text-align:left">
+      <h1>נתונים השוואתיים</h1>
+      <div class="meta">${p.type||'נכס'} – ${[p.street,p.houseNumber,p.city].filter(Boolean).join(' ')}</div>
+      <div class="meta" style="color:#bbb;font-size:9px">הופק: ${new Date().toLocaleDateString('he-IL')}</div>
+    </div>
+  </div>
+  <h2>פרטי הנכס</h2>
+  <div class="pgrid">
+    ${[['יישוב',p.city],['שכונה',p.neighborhood],['סוג',p.type],['חדרים',p.rooms],['שטח מ"ר',p.area],['קומה',p.floor ? 'קומה ' + String(p.floor).replace(/קומה\s*/,'') : null],['חניות',p.parking],['ממ"ד',p.safeRoom],['מרפסת',p.balcony]].filter(([,v])=>v).map(([l,v])=>`<div class="pbox"><div class="l">${l}</div><div class="v">${v}</div></div>`).join('')}
+  </div>
+  ${(pr.fast||pr.real||pr.ceil)?`<div class="prices">
+    <div class="pc"><div class="l">מחיר מהיר</div><div class="v fast">${fmt(pr.fast)}</div></div>
+    <div class="sep"></div>
+    <div class="pc"><div class="l">מחיר ריאלי ★</div><div class="v real">${fmt(pr.real)}</div></div>
+    <div class="sep"></div>
+    <div class="pc"><div class="l">מחיר תקרה</div><div class="v ceil">${fmt(pr.ceil)}</div></div>
+  </div>`:''}
+  ${tx?.building?.filter(d=>!d.removed).length?`<h2>עסקאות בניין</h2><table><thead><tr><th>כתובת</th><th>תאריך</th><th>מחיר</th><th>₪/מ"ר</th><th>שטח</th><th>חד׳</th><th>קומה</th></tr></thead><tbody>${mkRows(tx.building)}</tbody></table>`:''}
+  ${tx?.street?.filter(d=>!d.removed).length?`<h2>עסקאות רחוב</h2><table><thead><tr><th>כתובת</th><th>תאריך</th><th>מחיר</th><th>₪/מ"ר</th><th>שטח</th><th>חד׳</th><th>קומה</th></tr></thead><tbody>${mkRows(tx.street)}</tbody></table>`:''}
+  ${tx?.neighborhood?.filter(d=>!d.removed).length?`<h2>עסקאות שכונה</h2><table><thead><tr><th>כתובת</th><th>תאריך</th><th>מחיר</th><th>₪/מ"ר</th><th>שטח</th><th>חד׳</th><th>קומה</th></tr></thead><tbody>${mkRows(tx.neighborhood)}</tbody></table>`:''}
+  ${S.analysis?`<h2>ניתוח מקצועי</h2><div class="analysis">${S.analysis.replace(/\n/g,'<br>')}</div>`:''}
+  ${p.notes?`<h2>הערות</h2><div class="analysis" style="background:#fffbf0;border-color:#dab375">${p.notes}</div>`:''}
+  <div class="footer">
+    <span>מקור: govmap.gov.il | רשות המסים</span>
+    <span>אור נכסים CMA</span>
+    <span>הופק: ${new Date().toLocaleDateString('he-IL')}</span>
+  </div>
+  <script>window.onload=()=>setTimeout(()=>window.print(),900)<\/script>
+  </body></html>`);
+  w.document.close();
+  toast('פותח PDF...');
+}
+
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+</script>
+</body>
+</html>
